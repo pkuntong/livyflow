@@ -1,0 +1,273 @@
+import React, { useState, useEffect } from "react";
+import { Transaction, Account } from "@/entities/all";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
+import { TrendingUp, TrendingDown, Calendar, PieChart } from "lucide-react";
+
+export default function Analytics() {
+  const [transactions, setTransactions] = useState([]);
+  const [accounts, setAccounts] = useState([]);
+  const [timeframe, setTimeframe] = useState('6months');
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const loadData = async () => {
+    try {
+      const [transactionsData, accountsData] = await Promise.all([
+        Transaction.list('-date'),
+        Account.list()
+      ]);
+      
+      setTransactions(transactionsData);
+      setAccounts(accountsData);
+    } catch (error) {
+      console.error('Error loading data:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const getTimeframeData = () => {
+    const now = new Date();
+    const monthsBack = timeframe === '3months' ? 3 : timeframe === '6months' ? 6 : 12;
+    const startDate = new Date(now.getFullYear(), now.getMonth() - monthsBack, 1);
+    
+    return transactions.filter(t => new Date(t.date) >= startDate);
+  };
+
+  const getMonthlyData = () => {
+    const filteredTransactions = getTimeframeData();
+    const monthlyData = {};
+    
+    filteredTransactions.forEach(transaction => {
+      const month = transaction.date.slice(0, 7);
+      if (!monthlyData[month]) {
+        monthlyData[month] = { month, income: 0, expenses: 0 };
+      }
+      
+      if (transaction.amount > 0) {
+        monthlyData[month].income += transaction.amount;
+      } else {
+        monthlyData[month].expenses += Math.abs(transaction.amount);
+      }
+    });
+    
+    return Object.values(monthlyData).sort((a, b) => a.month.localeCompare(b.month));
+  };
+
+  const getCategoryData = () => {
+    const filteredTransactions = getTimeframeData();
+    const categoryTotals = {};
+    
+    filteredTransactions
+      .filter(t => t.amount < 0)
+      .forEach(transaction => {
+        const category = transaction.category.replace(/_/g, ' ');
+        categoryTotals[category] = (categoryTotals[category] || 0) + Math.abs(transaction.amount);
+      });
+    
+    return Object.entries(categoryTotals)
+      .map(([category, amount]) => ({ category, amount }))
+      .sort((a, b) => b.amount - a.amount)
+      .slice(0, 8);
+  };
+
+  const getTotalStats = () => {
+    const filteredTransactions = getTimeframeData();
+    const totalIncome = filteredTransactions.filter(t => t.amount > 0).reduce((sum, t) => sum + t.amount, 0);
+    const totalExpenses = Math.abs(filteredTransactions.filter(t => t.amount < 0).reduce((sum, t) => sum + t.amount, 0));
+    const avgMonthlyIncome = totalIncome / (timeframe === '3months' ? 3 : timeframe === '6months' ? 6 : 12);
+    const avgMonthlyExpenses = totalExpenses / (timeframe === '3months' ? 3 : timeframe === '6months' ? 6 : 12);
+    
+    return { totalIncome, totalExpenses, avgMonthlyIncome, avgMonthlyExpenses };
+  };
+
+  const monthlyData = getMonthlyData();
+  const categoryData = getCategoryData();
+  const stats = getTotalStats();
+
+  if (isLoading) {
+    return (
+      <div className="p-6 md:p-8 min-h-screen bg-gray-50">
+        <div className="max-w-7xl mx-auto">
+          <div className="animate-pulse space-y-6">
+            <div className="h-8 bg-gray-200 rounded w-48"></div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+              {[...Array(4)].map((_, i) => (
+                <div key={i} className="h-32 bg-gray-200 rounded-lg"></div>
+              ))}
+            </div>
+            <div className="grid lg:grid-cols-2 gap-6">
+              <div className="h-96 bg-gray-200 rounded-lg"></div>
+              <div className="h-96 bg-gray-200 rounded-lg"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-6 md:p-8 min-h-screen bg-gray-50">
+      <div className="max-w-7xl mx-auto space-y-6">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">Financial Analytics</h1>
+            <p className="text-gray-600 mt-1">
+              Insights into your spending patterns and financial trends
+            </p>
+          </div>
+          <Select value={timeframe} onValueChange={setTimeframe}>
+            <SelectTrigger className="w-48">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="3months">Last 3 Months</SelectItem>
+              <SelectItem value="6months">Last 6 Months</SelectItem>
+              <SelectItem value="12months">Last 12 Months</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <Card className="shadow-lg border-0">
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-sm font-medium text-gray-600">
+                Total Income
+              </CardTitle>
+              <TrendingUp className="w-4 h-4 text-green-600" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-green-600">
+                ${stats.totalIncome.toLocaleString()}
+              </div>
+              <div className="text-xs text-gray-500 mt-1">
+                Avg: ${stats.avgMonthlyIncome.toLocaleString()}/month
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="shadow-lg border-0">
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-sm font-medium text-gray-600">
+                Total Expenses
+              </CardTitle>
+              <TrendingDown className="w-4 h-4 text-red-600" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-red-600">
+                ${stats.totalExpenses.toLocaleString()}
+              </div>
+              <div className="text-xs text-gray-500 mt-1">
+                Avg: ${stats.avgMonthlyExpenses.toLocaleString()}/month
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="shadow-lg border-0">
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-sm font-medium text-gray-600">
+                Net Income
+              </CardTitle>
+              <Calendar className="w-4 h-4 text-blue-600" />
+            </CardHeader>
+            <CardContent>
+              <div className={`text-2xl font-bold ${
+                stats.totalIncome - stats.totalExpenses >= 0 ? 'text-green-600' : 'text-red-600'
+              }`}>
+                ${(stats.totalIncome - stats.totalExpenses).toLocaleString()}
+              </div>
+              <div className="text-xs text-gray-500 mt-1">
+                Period total
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="shadow-lg border-0">
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-sm font-medium text-gray-600">
+                Savings Rate
+              </CardTitle>
+              <PieChart className="w-4 h-4 text-purple-600" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-purple-600">
+                {stats.totalIncome > 0 ? 
+                  (((stats.totalIncome - stats.totalExpenses) / stats.totalIncome) * 100).toFixed(1) : 0
+                }%
+              </div>
+              <div className="text-xs text-gray-500 mt-1">
+                Of total income
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="grid lg:grid-cols-2 gap-6">
+          <Card className="shadow-lg border-0">
+            <CardHeader>
+              <CardTitle className="text-xl font-bold">Income vs Expenses</CardTitle>
+              <p className="text-sm text-gray-600">Monthly comparison over time</p>
+            </CardHeader>
+            <CardContent>
+              <div className="h-80">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={monthlyData}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis 
+                      dataKey="month" 
+                      tickFormatter={(value) => new Date(value).toLocaleDateString('en-US', { month: 'short' })}
+                    />
+                    <YAxis tickFormatter={(value) => `$${(value / 1000).toFixed(0)}k`} />
+                    <Tooltip 
+                      formatter={(value) => [`$${value.toLocaleString()}`, '']}
+                      labelFormatter={(value) => new Date(value).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+                    />
+                    <Line 
+                      type="monotone" 
+                      dataKey="income" 
+                      stroke="#10B981" 
+                      strokeWidth={3}
+                      name="Income"
+                    />
+                    <Line 
+                      type="monotone" 
+                      dataKey="expenses" 
+                      stroke="#EF4444" 
+                      strokeWidth={3}
+                      name="Expenses"
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="shadow-lg border-0">
+            <CardHeader>
+              <CardTitle className="text-xl font-bold">Top Spending Categories</CardTitle>
+              <p className="text-sm text-gray-600">Where your money goes</p>
+            </CardHeader>
+            <CardContent>
+              <div className="h-80">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={categoryData} layout="horizontal">
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis type="number" tickFormatter={(value) => `$${(value / 1000).toFixed(0)}k`} />
+                    <YAxis dataKey="category" type="category" width={100} />
+                    <Tooltip formatter={(value) => [`$${value.toLocaleString()}`, 'Amount']} />
+                    <Bar dataKey="amount" fill="#8B5CF6" />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    </div>
+  );
+}

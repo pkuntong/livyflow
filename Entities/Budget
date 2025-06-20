@@ -1,0 +1,46 @@
+{
+  "name": "Budget",
+  "type": "object",
+  "properties": {
+    "category": {
+      "type": "string",
+      "enum": [
+        "food_dining",
+        "transportation",
+        "shopping",
+        "entertainment",
+        "bills_utilities",
+        "healthcare",
+        "education",
+        "travel",
+        "groceries",
+        "gas",
+        "home",
+        "personal_care",
+        "gifts_charity",
+        "business",
+        "other"
+      ],
+      "description": "Budget category"
+    },
+    "monthly_limit": {
+      "type": "number",
+      "description": "Monthly spending limit for this category"
+    },
+    "month": {
+      "type": "string",
+      "format": "date",
+      "description": "Month this budget applies to (YYYY-MM-01 format)"
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether this budget is active"
+    }
+  },
+  "required": [
+    "category",
+    "monthly_limit",
+    "month"
+  ]
+}

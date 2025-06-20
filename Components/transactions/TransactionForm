@@ -1,0 +1,179 @@
+import React, { useState } from 'react';
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import { X, DollarSign } from "lucide-react";
+
+const CATEGORIES = [
+  { value: "food_dining", label: "Food & Dining" },
+  { value: "transportation", label: "Transportation" },
+  { value: "shopping", label: "Shopping" },
+  { value: "entertainment", label: "Entertainment" },
+  { value: "bills_utilities", label: "Bills & Utilities" },
+  { value: "healthcare", label: "Healthcare" },
+  { value: "education", label: "Education" },
+  { value: "travel", label: "Travel" },
+  { value: "groceries", label: "Groceries" },
+  { value: "gas", label: "Gas" },
+  { value: "home", label: "Home" },
+  { value: "personal_care", label: "Personal Care" },
+  { value: "gifts_charity", label: "Gifts & Charity" },
+  { value: "business", label: "Business" },
+  { value: "income_salary", label: "Salary" },
+  { value: "income_freelance", label: "Freelance" },
+  { value: "income_investment", label: "Investment" },
+  { value: "income_other", label: "Other Income" },
+  { value: "other", label: "Other" }
+];
+
+export default function TransactionForm({ accounts, onSubmit, onCancel, isVisible }) {
+  const [formData, setFormData] = useState({
+    description: '',
+    amount: '',
+    category: '',
+    account_id: '',
+    date: new Date().toISOString().split('T')[0],
+    notes: ''
+  });
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    onSubmit({
+      ...formData,
+      amount: parseFloat(formData.amount)
+    });
+    setFormData({
+      description: '',
+      amount: '',
+      category: '',
+      account_id: '',
+      date: new Date().toISOString().split('T')[0],
+      notes: ''
+    });
+  };
+
+  if (!isVisible) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+      <Card className="w-full max-w-md shadow-2xl">
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle className="text-xl font-bold flex items-center gap-2">
+            <DollarSign className="w-5 h-5 text-emerald-600" />
+            Add Transaction
+          </CardTitle>
+          <Button variant="ghost" size="icon" onClick={onCancel}>
+            <X className="w-4 h-4" />
+          </Button>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="description">Description</Label>
+              <Input
+                id="description"
+                value={formData.description}
+                onChange={(e) => setFormData({...formData, description: e.target.value})}
+                placeholder="e.g., Lunch at restaurant"
+                required
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="amount">Amount</Label>
+                <Input
+                  id="amount"
+                  type="number"
+                  step="0.01"
+                  value={formData.amount}
+                  onChange={(e) => setFormData({...formData, amount: e.target.value})}
+                  placeholder="0.00"
+                  required
+                />
+                <p className="text-xs text-gray-500">
+                  Use negative for expenses
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="date">Date</Label>
+                <Input
+                  id="date"
+                  type="date"
+                  value={formData.date}
+                  onChange={(e) => setFormData({...formData, date: e.target.value})}
+                  required
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="category">Category</Label>
+              <Select 
+                value={formData.category} 
+                onValueChange={(category) => setFormData({...formData, category})}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select category" />
+                </SelectTrigger>
+                <SelectContent>
+                  {CATEGORIES.map((cat) => (
+                    <SelectItem key={cat.value} value={cat.value}>
+                      {cat.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="account">Account</Label>
+              <Select 
+                value={formData.account_id} 
+                onValueChange={(account_id) => setFormData({...formData, account_id})}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select account" />
+                </SelectTrigger>
+                <SelectContent>
+                  {accounts.map((account) => (
+                    <SelectItem key={account.id} value={account.id}>
+                      {account.name} - {account.type}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="notes">Notes (Optional)</Label>
+              <Textarea
+                id="notes"
+                value={formData.notes}
+                onChange={(e) => setFormData({...formData, notes: e.target.value})}
+                placeholder="Additional details..."
+                rows={3}
+              />
+            </div>
+
+            <div className="flex gap-3 pt-4">
+              <Button type="button" variant="outline" onClick={onCancel} className="flex-1">
+                Cancel
+              </Button>
+              <Button 
+                type="submit" 
+                className="flex-1 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700"
+              >
+                Add Transaction
+              </Button>
+            </div>
+          </form>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}

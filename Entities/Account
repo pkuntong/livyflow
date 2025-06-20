@@ -1,0 +1,39 @@
+{
+  "name": "Account",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Account name"
+    },
+    "type": {
+      "type": "string",
+      "enum": [
+        "checking",
+        "savings",
+        "credit_card",
+        "investment",
+        "cash"
+      ],
+      "description": "Type of account"
+    },
+    "balance": {
+      "type": "number",
+      "description": "Current account balance"
+    },
+    "bank": {
+      "type": "string",
+      "description": "Bank or institution name"
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether account is active"
+    }
+  },
+  "required": [
+    "name",
+    "type",
+    "balance"
+  ]
+}

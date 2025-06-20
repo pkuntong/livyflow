@@ -1,0 +1,59 @@
+{
+  "name": "Transaction",
+  "type": "object",
+  "properties": {
+    "description": {
+      "type": "string",
+      "description": "Transaction description"
+    },
+    "amount": {
+      "type": "number",
+      "description": "Transaction amount (positive for income, negative for expense)"
+    },
+    "category": {
+      "type": "string",
+      "enum": [
+        "food_dining",
+        "transportation",
+        "shopping",
+        "entertainment",
+        "bills_utilities",
+        "healthcare",
+        "education",
+        "travel",
+        "groceries",
+        "gas",
+        "home",
+        "personal_care",
+        "gifts_charity",
+        "business",
+        "income_salary",
+        "income_freelance",
+        "income_investment",
+        "income_other",
+        "other"
+      ],
+      "description": "Transaction category"
+    },
+    "account_id": {
+      "type": "string",
+      "description": "ID of the account this transaction belongs to"
+    },
+    "date": {
+      "type": "string",
+      "format": "date",
+      "description": "Transaction date"
+    },
+    "notes": {
+      "type": "string",
+      "description": "Additional notes"
+    }
+  },
+  "required": [
+    "description",
+    "amount",
+    "category",
+    "account_id",
+    "date"
+  ]
+}
