@@ -55,4 +55,4 @@
 1. Clone the repo  
 ```bash
 git clone https://github.com/pkuntong/LivyFlow.git
-cd livy
+cd LivyFlow
