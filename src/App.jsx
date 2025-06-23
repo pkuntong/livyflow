@@ -1,14 +1,14 @@
 import React from 'react'
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
 import Layout from './components/Layout'
-import Dashboard from './pages/Dashboard'
-import Transactions from './pages/Transactions'
-import Budgets from './pages/Budgets'
-import Accounts from './pages/Accounts'
-import Analytics from './pages/Analytics'
+import Dashboard from './Pages/Dashboard'
+import Transactions from './Pages/Transactions'
+import Budgets from './Pages/Budgets'
+import Accounts from './Pages/Accounts'
+import Analytics from './Pages/Analytics'
 import Landing from './Landing'
-import SignUp from './pages/SignUp'
-import Login from './pages/Login'
+import SignUp from './Pages/SignUp'
+import Login from './Pages/Login'
 import { LayoutGrid, Receipt, PiggyBank, CreditCard, LineChart, User } from 'lucide-react'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 
@@ -31,9 +31,9 @@ const mockTransactions = [
 
 // Protected Route component
 function ProtectedRoute({ children }) {
-  const { currentUser } = useAuth();
+  const { user } = useAuth();
   
-  if (!currentUser) {
+  if (!user) {
     return <Navigate to="/login" />;
   }
   

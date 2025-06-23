@@ -11,10 +11,12 @@
   },
   "dependencies": {
     "@headlessui/react": "^2.2.4",
+    "axios": "^1.10.0",
     "firebase": "^11.9.1",
     "lucide-react": "^0.263.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
+    "react-plaid-link": "^4.0.1",
     "react-router-dom": "^7.6.2",
     "recharts": "^2.15.3"
   },

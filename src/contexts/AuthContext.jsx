@@ -26,12 +26,42 @@ export function AuthProvider({ children }) {
   }
 
   function logout() {
+    // Clear JWT token from localStorage
+    localStorage.removeItem('authToken');
     return signOut(auth);
   }
 
+  // Function to set JWT token (called after successful Firebase auth)
+  const setAuthToken = (token) => {
+    localStorage.setItem('authToken', token);
+  };
+
+  // Function to get JWT token
+  const getAuthToken = () => {
+    return localStorage.getItem('authToken');
+  };
+
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
       setCurrentUser(user);
+      
+      // If user is authenticated, get JWT token from your backend
+      if (user) {
+        try {
+          // Get Firebase ID token
+          const idToken = await user.getIdToken();
+          
+          // In a real app, you'd exchange this for a JWT from your backend
+          // For now, we'll use the Firebase ID token as the auth token
+          setAuthToken(idToken);
+        } catch (error) {
+          console.error('Error getting auth token:', error);
+        }
+      } else {
+        // Clear token when user logs out
+        localStorage.removeItem('authToken');
+      }
+      
       setLoading(false);
     });
 
@@ -39,10 +69,13 @@ export function AuthProvider({ children }) {
   }, []);
 
   const value = {
+    user: currentUser,
     currentUser,
     signup,
     login,
-    logout
+    logout,
+    setAuthToken,
+    getAuthToken
   };
 
   return (

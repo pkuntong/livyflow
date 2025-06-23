@@ -1,6 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Plus, CreditCard, PiggyBank, LineChart, Wallet } from 'lucide-react';
 import AccountModal from '../components/accounts/AccountModal';
+import ConnectBankAccount from '../components/ConnectBankAccount';
+import TestPlaidIntegration from '../components/TestPlaidIntegration';
+import { useAuth } from '../contexts/AuthContext';
+import plaidService from '../services/plaidService';
 
 const ACCOUNT_CONFIGS = {
   'CHECKING': {
@@ -137,9 +141,48 @@ function AccountCard({ account }) {
 }
 
 export default function Accounts() {
+  const { user } = useAuth();
   const [accounts, setAccounts] = useState(initialAccounts);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [showPlaidConnect, setShowPlaidConnect] = useState(false);
+  const [linkToken, setLinkToken] = useState(null);
+  const [plaidLoading, setPlaidLoading] = useState(false);
   const totalBalance = accounts.reduce((sum, account) => sum + account.balance, 0);
+
+  // Test Plaid link token fetch on component mount only if user is signed in
+  useEffect(() => {
+    if (!user) {
+      console.log("🔒 User not signed in, skipping Plaid link token fetch");
+      return;
+    }
+
+    console.log("🔁 useEffect: User signed in, attempting to fetch Plaid link token");
+    console.log("👤 User:", user.email);
+    setPlaidLoading(true);
+    
+    plaidService.getLinkToken()
+      .then(response => {
+        console.log("✅ Link token response:", response);
+        console.log("📦 Full response data:", response);
+        setLinkToken(response);
+      })
+      .catch(error => {
+        console.error("❌ Error fetching link token:", error);
+        console.error("❌ Error response data:", error.response?.data);
+        console.error("❌ Error status:", error.response?.status);
+        console.error("❌ Error message:", error.message);
+        
+        // Handle 403 Forbidden error - user not authenticated
+        if (error.response?.status === 403) {
+          console.log("🚫 403 Forbidden - User not authenticated");
+          // You can redirect to sign in page here if needed
+          // window.location.href = '/login';
+        }
+      })
+      .finally(() => {
+        setPlaidLoading(false);
+      });
+  }, [user]);
 
   const handleAddAccount = (newAccount) => {
     const config = ACCOUNT_CONFIGS[newAccount.type];
@@ -149,6 +192,31 @@ export default function Accounts() {
       tag: config.tag
     };
     setAccounts([...accounts, accountWithConfig]);
+  };
+
+  const handlePlaidSuccess = (result, metadata) => {
+    console.log("🎉 Accounts: Plaid connection successful!");
+    console.log("📊 Full result:", result);
+    console.log("🔍 Full metadata:", metadata);
+    
+    // Add the connected account to the list
+    const newAccount = {
+      id: Date.now(), // Generate unique ID
+      name: metadata.institution?.name || 'Connected Account',
+      institution: metadata.institution?.name || 'Unknown Bank',
+      type: 'CHECKING', // Default type
+      balance: 0, // Will be updated with real data
+      icon: Wallet,
+      iconBgColor: 'bg-blue-100',
+      iconColor: 'text-blue-600',
+      tag: 'checking',
+      isPlaidConnected: true,
+      accessToken: result.access_token,
+      itemId: result.item_id
+    };
+    
+    setAccounts(prev => [...prev, newAccount]);
+    setShowPlaidConnect(false);
   };
 
   return (
@@ -163,14 +231,41 @@ export default function Accounts() {
             <p className="text-sm text-gray-600">Total Balance</p>
             <p className="text-2xl font-bold text-gray-900">{formatCurrency(totalBalance)}</p>
           </div>
-          <button 
-            onClick={() => setIsModalOpen(true)}
-            className="bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors font-medium"
-          >
-            <Plus className="w-5 h-5" />
-            Add Account
-          </button>
+          <div className="flex gap-2">
+            <button 
+              onClick={() => setShowPlaidConnect(true)}
+              className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors font-medium"
+            >
+              <CreditCard className="w-5 h-5" />
+              Connect Bank
+            </button>
+            <button 
+              onClick={() => setIsModalOpen(true)}
+              className="bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors font-medium"
+            >
+              <Plus className="w-5 h-5" />
+              Add Account
+            </button>
+          </div>
         </div>
+      </div>
+
+      {/* Plaid Connection Status */}
+      {plaidLoading && (
+        <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+          <p className="text-blue-800">🔄 Testing Plaid connection...</p>
+        </div>
+      )}
+
+      {linkToken && (
+        <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg">
+          <p className="text-green-800">✅ Plaid connection ready! Link token: {linkToken.substring(0, 20)}...</p>
+        </div>
+      )}
+
+      {/* Test Integration Component */}
+      <div className="mb-6">
+        <TestPlaidIntegration />
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -178,6 +273,25 @@ export default function Accounts() {
           <AccountCard key={account.id} account={account} />
         ))}
       </div>
+
+      {/* Plaid Connect Modal */}
+      {showPlaidConnect && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 max-w-md w-full mx-4">
+            <h2 className="text-xl font-bold mb-4">Connect Bank Account</h2>
+            <ConnectBankAccount 
+              onSuccess={handlePlaidSuccess}
+              onExit={() => setShowPlaidConnect(false)}
+            />
+            <button 
+              onClick={() => setShowPlaidConnect(false)}
+              className="mt-4 w-full bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded-lg transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
 
       <AccountModal
         isOpen={isModalOpen}
