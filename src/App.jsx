@@ -4,8 +4,10 @@ import Layout from './components/Layout'
 import Dashboard from './Pages/Dashboard'
 import Transactions from './Pages/Transactions'
 import Budgets from './Pages/Budgets'
+import Reports from './Pages/Reports'
 import Accounts from './Pages/Accounts'
 import Analytics from './Pages/Analytics'
+import Settings from './Pages/Settings'
 import Landing from './Landing'
 import SignUp from './Pages/SignUp'
 import Login from './Pages/Login'
@@ -58,8 +60,10 @@ function AppRoutes() {
         <Route path="dashboard" element={<Dashboard accounts={mockAccounts} transactions={mockTransactions} />} />
         <Route path="transactions" element={<Transactions />} />
         <Route path="budgets" element={<Budgets />} />
+        <Route path="reports" element={<Reports />} />
         <Route path="accounts" element={<Accounts />} />
         <Route path="analytics" element={<Analytics />} />
+        <Route path="settings" element={<Settings />} />
       </Route>
     </Routes>
   )

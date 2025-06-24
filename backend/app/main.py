@@ -1,11 +1,13 @@
-from fastapi import FastAPI, Depends, HTTPException, Query
+from fastapi import FastAPI, Depends, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import Optional, List
+from typing import Optional, List, Dict
 import logging
 from app.auth import get_current_user
 from app.plaid_client import create_link_token, exchange_public_token, get_transactions, get_accounts, store_access_token, get_access_token_for_user
 from app.config import settings
+from app.email_service import email_service
+from app.scheduler import weekly_scheduler
 from datetime import datetime, timedelta
 from fastapi.responses import JSONResponse, FileResponse
 import csv
@@ -20,8 +22,18 @@ import tempfile
 import os
 import json
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
+# Configure logging based on environment
+if settings.is_production():
+    logging.basicConfig(
+        level=logging.WARNING,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    )
+else:
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    )
+
 logger = logging.getLogger(__name__)
 
 # In-memory storage for budgets (in production, use a database)
@@ -84,14 +96,70 @@ class Budget(BaseModel):
     remaining: float = 0.0
     percentage_used: float = 0.0
 
-app = FastAPI(title="LivyFlow API", version="1.0.0")
+# Alert Rule Models
+class AlertRule(BaseModel):
+    id: str
+    user_id: str
+    name: str
+    type: str  # "balance_low", "spending_high", "recurring_subscription", "budget_exceeded"
+    condition: str  # "balance < 50", "spending > 500", etc.
+    threshold: float
+    enabled: bool = True
+    created_at: str
+    last_triggered: Optional[str] = None
+    trigger_count: int = 0
 
-# Add CORS middleware
+class CreateAlertRuleRequest(BaseModel):
+    name: str
+    type: str
+    threshold: float
+    enabled: bool = True
+
+class AlertTrigger(BaseModel):
+    id: str
+    alert_rule_id: str
+    user_id: str
+    message: str
+    triggered_at: str
+    resolved: bool = False
+    resolved_at: Optional[str] = None
+
+# In-memory storage for alert rules and triggers
+alert_rules: Dict[str, List[AlertRule]] = {}
+alert_triggers: Dict[str, List[AlertTrigger]] = {}
+
+def get_alert_rules_for_user(user_id: str) -> List[AlertRule]:
+    """Get all alert rules for a user."""
+    return alert_rules.get(user_id, [])
+
+def save_alert_rule(alert_rule: AlertRule):
+    """Save an alert rule for a user."""
+    if alert_rule.user_id not in alert_rules:
+        alert_rules[alert_rule.user_id] = []
+    alert_rules[alert_rule.user_id].append(alert_rule)
+
+def get_alert_triggers_for_user(user_id: str) -> List[AlertTrigger]:
+    """Get all alert triggers for a user."""
+    return alert_triggers.get(user_id, [])
+
+def save_alert_trigger(trigger: AlertTrigger):
+    """Save an alert trigger for a user."""
+    if trigger.user_id not in alert_triggers:
+        alert_triggers[trigger.user_id] = []
+    alert_triggers[trigger.user_id].append(trigger)
+
+app = FastAPI(
+    title="LivyFlow API", 
+    version="1.0.0",
+    debug=settings.DEBUG
+)
+
+# Add CORS middleware with production-ready configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000"],  # Frontend URLs
+    allow_origins=settings.ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     allow_headers=["*"],
 )
 
@@ -100,7 +168,7 @@ class PublicTokenRequest(BaseModel):
 
 @app.get("/")
 async def root():
-    return {"message": "LivyFlow API is running"}
+    return {"message": "LivyFlow API is running", "environment": settings.ENVIRONMENT}
 
 @app.get("/api/health")
 async def health_check():
@@ -108,11 +176,13 @@ async def health_check():
     Health check endpoint to verify backend is running.
     No authentication required.
     """
-    logger.info("🏥 Health check requested")
+    if not settings.is_production():
+        logger.info("🏥 Health check requested")
     return {
         "status": "healthy",
         "message": "LivyFlow API is running",
-        "timestamp": "2024-01-01T00:00:00Z"
+        "environment": settings.ENVIRONMENT,
+        "timestamp": datetime.now().isoformat()
     }
 
 @app.get("/api/v1/plaid/link-token")
@@ -1040,6 +1110,105 @@ async def get_spending_summary(current_user: dict = Depends(get_current_user)):
         raise HTTPException(
             status_code=500,
             detail=f"Failed to get spending summary: {str(e)}"
+        )
+
+@app.get("/api/v1/budgets/summary")
+async def get_budget_summary(current_user: dict = Depends(get_current_user)):
+    """
+    Get budget summary comparing actual spending vs budget for each category.
+    Requires authentication via Bearer token.
+    """
+    logger.info("🔄 Fetching budget summary")
+    logger.info(f"👤 User ID: {current_user['user_id']}")
+    
+    try:
+        user_id = current_user["user_id"]
+        
+        # Get budgets for user
+        user_budgets = get_user_budgets(user_id)
+        
+        if not user_budgets:
+            logger.info(f"ℹ️ No budgets found for user: {user_id}")
+            return {
+                "message": "No budgets found. Create your first budget to get started.",
+                "budgets": [],
+                "summary": {
+                    "total_budget": 0,
+                    "total_spent": 0,
+                    "total_remaining": 0,
+                    "overall_percentage": 0
+                },
+                "user_id": user_id
+            }
+        
+        # Calculate summary for each budget
+        total_budget = 0
+        total_spent = 0
+        budget_summaries = []
+        
+        for budget in user_budgets:
+            # Update budget with actual spending data
+            updated_budget = update_budget_with_spending(budget, user_id)
+            
+            total_budget += updated_budget['monthly_limit']
+            total_spent += updated_budget['actual_spent']
+            
+            # Determine status
+            if updated_budget['percentage_used'] >= 100:
+                status = "over_budget"
+                status_color = "red"
+            elif updated_budget['percentage_used'] >= 80:
+                status = "near_limit"
+                status_color = "yellow"
+            else:
+                status = "on_track"
+                status_color = "green"
+            
+            budget_summaries.append({
+                "id": updated_budget['id'],
+                "category": updated_budget['category'],
+                "budget_limit": updated_budget['monthly_limit'],
+                "actual_spent": updated_budget['actual_spent'],
+                "remaining": updated_budget['remaining'],
+                "percentage_used": updated_budget['percentage_used'],
+                "status": status,
+                "status_color": status_color,
+                "description": updated_budget.get('description', '')
+            })
+        
+        total_remaining = total_budget - total_spent
+        overall_percentage = (total_spent / total_budget * 100) if total_budget > 0 else 0
+        
+        # Count budgets by status
+        over_budget_count = len([b for b in budget_summaries if b['status'] == 'over_budget'])
+        near_limit_count = len([b for b in budget_summaries if b['status'] == 'near_limit'])
+        on_track_count = len([b for b in budget_summaries if b['status'] == 'on_track'])
+        
+        logger.info(f"✅ Budget summary calculated")
+        logger.info(f"💰 Total budget: ${total_budget:.2f}")
+        logger.info(f"💸 Total spent: ${total_spent:.2f}")
+        logger.info(f"📊 Overall percentage: {overall_percentage:.1f}%")
+        logger.info(f"🚨 Over budget: {over_budget_count}, Near limit: {near_limit_count}, On track: {on_track_count}")
+        
+        return {
+            "budgets": budget_summaries,
+            "summary": {
+                "total_budget": round(total_budget, 2),
+                "total_spent": round(total_spent, 2),
+                "total_remaining": round(total_remaining, 2),
+                "overall_percentage": round(overall_percentage, 1),
+                "over_budget_count": over_budget_count,
+                "near_limit_count": near_limit_count,
+                "on_track_count": on_track_count
+            },
+            "user_id": user_id
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Failed to get budget summary: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get budget summary: {str(e)}"
         )
 
 @app.get("/api/v1/budgets/suggestions")
@@ -1970,6 +2139,1413 @@ async def get_spending_trends(
             status_code=500,
             detail=f"Failed to fetch spending trends: {str(e)}"
         )
+
+@app.get("/api/v1/insights/monthly")
+async def get_monthly_insights(current_user: dict = Depends(get_current_user)):
+    """
+    Get monthly spending insights comparing current month to previous month.
+    Requires authentication via Bearer token.
+    """
+    logger.info("🔄 Fetching monthly insights")
+    logger.info(f"👤 User ID: {current_user['user_id']}")
+    
+    try:
+        user_id = current_user["user_id"]
+        
+        # Get access token for user
+        access_token = get_access_token_for_user(user_id)
+        if not access_token:
+            logger.warning(f"⚠️ No access token found for user: {user_id}")
+            return {
+                "insights": [],
+                "summary": {
+                    "current_month_total": 0,
+                    "previous_month_total": 0,
+                    "total_change_percent": 0,
+                    "message": "No bank account connected. Connect your bank to see monthly insights."
+                },
+                "category_changes": [],
+                "largest_increase": None,
+                "largest_decrease": None
+            }
+        
+        # Calculate date ranges for current and previous month
+        now = datetime.now()
+        current_month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        
+        # Previous month
+        if now.month == 1:
+            previous_month_start = now.replace(year=now.year-1, month=12, day=1, hour=0, minute=0, second=0, microsecond=0)
+        else:
+            previous_month_start = now.replace(month=now.month-1, day=1, hour=0, minute=0, second=0, microsecond=0)
+        
+        # End dates
+        current_month_end = now
+        previous_month_end = current_month_start - timedelta(microseconds=1)
+        
+        logger.info(f"📅 Current month: {current_month_start.strftime('%Y-%m-%d')} to {current_month_end.strftime('%Y-%m-%d')}")
+        logger.info(f"📅 Previous month: {previous_month_start.strftime('%Y-%m-%d')} to {previous_month_end.strftime('%Y-%m-%d')}")
+        
+        # Get transactions for both months
+        current_month_transactions = get_transactions(
+            access_token,
+            current_month_start.strftime('%Y-%m-%d'),
+            current_month_end.strftime('%Y-%m-%d'),
+            500
+        )
+        
+        previous_month_transactions = get_transactions(
+            access_token,
+            previous_month_start.strftime('%Y-%m-%d'),
+            previous_month_end.strftime('%Y-%m-%d'),
+            500
+        )
+        
+        # Process current month transactions
+        current_month_spending = {}
+        current_month_total = 0
+        
+        if current_month_transactions and current_month_transactions.transactions:
+            for transaction in current_month_transactions.transactions:
+                if transaction.amount < 0:  # Only spending transactions
+                    category = 'Other'
+                    if transaction.category and len(transaction.category) > 0:
+                        category = transaction.category[0]
+                    
+                    if category not in current_month_spending:
+                        current_month_spending[category] = 0
+                    
+                    current_month_spending[category] += abs(transaction.amount)
+                    current_month_total += abs(transaction.amount)
+        
+        # Process previous month transactions
+        previous_month_spending = {}
+        previous_month_total = 0
+        
+        if previous_month_transactions and previous_month_transactions.transactions:
+            for transaction in previous_month_transactions.transactions:
+                if transaction.amount < 0:  # Only spending transactions
+                    category = 'Other'
+                    if transaction.category and len(transaction.category) > 0:
+                        category = transaction.category[0]
+                    
+                    if category not in previous_month_spending:
+                        previous_month_spending[category] = 0
+                    
+                    previous_month_spending[category] += abs(transaction.amount)
+                    previous_month_total += abs(transaction.amount)
+        
+        # Calculate category changes
+        all_categories = set(list(current_month_spending.keys()) + list(previous_month_spending.keys()))
+        category_changes = []
+        
+        for category in all_categories:
+            current_amount = current_month_spending.get(category, 0)
+            previous_amount = previous_month_spending.get(category, 0)
+            
+            if previous_amount > 0:
+                change_percent = ((current_amount - previous_amount) / previous_amount) * 100
+            else:
+                change_percent = 100 if current_amount > 0 else 0
+            
+            category_changes.append({
+                "category": category,
+                "current_amount": round(current_amount, 2),
+                "previous_amount": round(previous_amount, 2),
+                "change_amount": round(current_amount - previous_amount, 2),
+                "change_percent": round(change_percent, 1),
+                "is_increase": change_percent > 0
+            })
+        
+        # Sort by absolute change percentage
+        category_changes.sort(key=lambda x: abs(x["change_percent"]), reverse=True)
+        
+        # Find largest increase and decrease
+        largest_increase = None
+        largest_decrease = None
+        
+        for change in category_changes:
+            if change["change_percent"] > 0 and (largest_increase is None or change["change_percent"] > largest_increase["change_percent"]):
+                largest_increase = change
+            elif change["change_percent"] < 0 and (largest_decrease is None or change["change_percent"] < largest_decrease["change_percent"]):
+                largest_decrease = change
+        
+        # Calculate total change percentage
+        total_change_percent = 0
+        if previous_month_total > 0:
+            total_change_percent = ((current_month_total - previous_month_total) / previous_month_total) * 100
+        
+        # Generate summary message
+        summary_message = ""
+        if current_month_total == 0 and previous_month_total == 0:
+            summary_message = "Not enough data yet for insights. Start spending to see monthly comparisons."
+        elif current_month_total == 0:
+            summary_message = "Great job! No spending this month compared to last month."
+        elif previous_month_total == 0:
+            summary_message = "This is your first month of tracked spending. Keep it up!"
+        else:
+            if total_change_percent > 10:
+                summary_message = f"Spending is up {abs(total_change_percent):.1f}% this month. Consider reviewing your budget."
+            elif total_change_percent < -10:
+                summary_message = f"Excellent! Spending is down {abs(total_change_percent):.1f}% this month."
+            else:
+                summary_message = f"Spending is relatively stable this month ({total_change_percent:+.1f}% change)."
+        
+        logger.info(f"✅ Generated monthly insights for {len(category_changes)} categories")
+        logger.info(f"📊 Current month total: ${current_month_total:.2f}")
+        logger.info(f"📊 Previous month total: ${previous_month_total:.2f}")
+        
+        return {
+            "insights": category_changes,
+            "summary": {
+                "current_month_total": round(current_month_total, 2),
+                "previous_month_total": round(previous_month_total, 2),
+                "total_change_percent": round(total_change_percent, 1),
+                "message": summary_message
+            },
+            "category_changes": category_changes,
+            "largest_increase": largest_increase,
+            "largest_decrease": largest_decrease
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Failed to fetch monthly insights: {str(e)}")
+        logger.error(f"❌ Error type: {type(e).__name__}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to fetch monthly insights: {str(e)}"
+        )
+
+@app.get("/api/v1/budget/recommendations")
+async def get_budget_recommendations(current_user: dict = Depends(get_current_user)):
+    """
+    Get smart budget recommendations based on past 3 months of spending.
+    Requires authentication via Bearer token.
+    """
+    logger.info("🔄 Fetching budget recommendations")
+    logger.info(f"👤 User ID: {current_user['user_id']}")
+    
+    try:
+        user_id = current_user["user_id"]
+        
+        # Get access token for user
+        access_token = get_access_token_for_user(user_id)
+        if not access_token:
+            logger.warning(f"⚠️ No access token found for user: {user_id}")
+            return {
+                "recommendations": {},
+                "message": "No bank account connected. Connect your bank to get budget recommendations.",
+                "has_data": False
+            }
+        
+        # Calculate date range for past 3 months
+        now = datetime.now()
+        end_date = now
+        start_date = now - timedelta(days=90)  # 3 months back
+        
+        logger.info(f"📅 Date range: {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}")
+        
+        # Get transactions for the past 3 months
+        transactions_response = get_transactions(
+            access_token,
+            start_date.strftime('%Y-%m-%d'),
+            end_date.strftime('%Y-%m-%d'),
+            1000  # Get more transactions for better analysis
+        )
+        
+        if not transactions_response or not transactions_response.transactions:
+            logger.info("ℹ️ No transactions found for budget recommendations")
+            return {
+                "recommendations": {},
+                "message": "We need more transaction history to recommend budgets. Start spending to get personalized suggestions.",
+                "has_data": False
+            }
+        
+        # Group transactions by category and month
+        category_monthly_spending = {}
+        
+        for transaction in transactions_response.transactions:
+            if transaction.amount < 0:  # Only spending transactions
+                # Parse transaction date
+                try:
+                    tx_date = datetime.strptime(transaction.date, '%Y-%m-%d')
+                    month_key = tx_date.strftime('%Y-%m')
+                except ValueError:
+                    continue
+                
+                # Get category
+                category = 'Other'
+                if transaction.category and len(transaction.category) > 0:
+                    category = transaction.category[0]
+                
+                # Initialize category if not exists
+                if category not in category_monthly_spending:
+                    category_monthly_spending[category] = {}
+                
+                # Initialize month if not exists
+                if month_key not in category_monthly_spending[category]:
+                    category_monthly_spending[category][month_key] = 0.0
+                
+                # Add transaction amount
+                category_monthly_spending[category][month_key] += abs(transaction.amount)
+        
+        # Calculate recommendations
+        recommendations = {}
+        total_recommendations = 0
+        
+        for category, monthly_data in category_monthly_spending.items():
+            if len(monthly_data) >= 1:  # Need at least 1 month of data
+                # Calculate average monthly spending
+                total_spending = sum(monthly_data.values())
+                num_months = len(monthly_data)
+                average_monthly = total_spending / num_months
+                
+                # Add 10% buffer for the recommendation
+                recommended_budget = average_monthly * 1.1
+                
+                recommendations[category] = {
+                    "amount": round(recommended_budget, 2),
+                    "average_monthly": round(average_monthly, 2),
+                    "months_analyzed": num_months,
+                    "total_spent": round(total_spending, 2)
+                }
+                
+                total_recommendations += recommended_budget
+        
+        # Sort recommendations by amount (highest first)
+        sorted_recommendations = dict(sorted(
+            recommendations.items(), 
+            key=lambda x: x[1]["amount"], 
+            reverse=True
+        ))
+        
+        logger.info(f"✅ Generated {len(recommendations)} budget recommendations")
+        logger.info(f"📊 Total recommended budget: ${total_recommendations:.2f}")
+        
+        if len(recommendations) == 0:
+            return {
+                "recommendations": {},
+                "message": "We need more transaction history to recommend budgets. Start spending to get personalized suggestions.",
+                "has_data": False
+            }
+        
+        return {
+            "recommendations": sorted_recommendations,
+            "total_recommended": round(total_recommendations, 2),
+            "categories_analyzed": len(recommendations),
+            "message": f"Based on your past {len(list(category_monthly_spending.values())[0])} months of spending, here are our recommendations:",
+            "has_data": True
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Failed to fetch budget recommendations: {str(e)}")
+        logger.error(f"❌ Error type: {type(e).__name__}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to fetch budget recommendations: {str(e)}"
+        )
+
+@app.get("/api/v1/transactions/recurring")
+async def get_recurring_subscriptions(current_user: dict = Depends(get_current_user)):
+    """
+    Detect recurring subscriptions from transaction history.
+    Requires authentication via Bearer token.
+    """
+    logger.info("🔄 Detecting recurring subscriptions")
+    logger.info(f"👤 User ID: {current_user['user_id']}")
+    
+    try:
+        user_id = current_user["user_id"]
+        
+        # Get access token for user
+        access_token = get_access_token_for_user(user_id)
+        if not access_token:
+            logger.warning(f"⚠️ No access token found for user: {user_id}")
+            return {
+                "subscriptions": [],
+                "message": "No bank account connected. Connect your bank to detect recurring subscriptions.",
+                "has_data": False
+            }
+        
+        # Get transactions for the past 6 months to detect patterns
+        now = datetime.now()
+        end_date = now
+        start_date = now - timedelta(days=180)  # 6 months back
+        
+        logger.info(f"📅 Date range: {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}")
+        
+        # Get transactions
+        transactions_response = get_transactions(
+            access_token,
+            start_date.strftime('%Y-%m-%d'),
+            end_date.strftime('%Y-%m-%d'),
+            1000  # Get more transactions for better pattern detection
+        )
+        
+        if not transactions_response or not transactions_response.transactions:
+            logger.info("ℹ️ No transactions found for subscription detection")
+            return {
+                "subscriptions": [],
+                "message": "No transactions found. Start making purchases to detect recurring subscriptions.",
+                "has_data": False
+            }
+        
+        # Group transactions by merchant and amount
+        merchant_groups = {}
+        
+        for transaction in transactions_response.transactions:
+            if transaction.amount < 0:  # Only spending transactions
+                # Use merchant name or transaction name
+                merchant_name = transaction.merchant_name or transaction.name or "Unknown Merchant"
+                
+                # Create a key based on merchant (not amount, to detect price changes)
+                group_key = merchant_name.lower().strip()
+                
+                if group_key not in merchant_groups:
+                    merchant_groups[group_key] = {
+                        "merchant": merchant_name,
+                        "transactions": [],
+                        "amounts": [],
+                        "dates": []
+                    }
+                
+                merchant_groups[group_key]["transactions"].append(transaction)
+                merchant_groups[group_key]["amounts"].append(abs(transaction.amount))
+                merchant_groups[group_key]["dates"].append(transaction.date)
+        
+        # Analyze patterns for recurring subscriptions
+        recurring_subscriptions = []
+        
+        for group_key, group_data in merchant_groups.items():
+            if len(group_data["transactions"]) >= 2:  # Need at least 2 transactions to detect pattern
+                dates = sorted(group_data["dates"])
+                
+                # Calculate intervals between transactions
+                intervals = []
+                for i in range(1, len(dates)):
+                    try:
+                        date1 = datetime.strptime(dates[i-1], '%Y-%m-%d')
+                        date2 = datetime.strptime(dates[i], '%Y-%m-%d')
+                        interval = (date2 - date1).days
+                        intervals.append(interval)
+                    except ValueError:
+                        continue
+                
+                if intervals:
+                    avg_interval = sum(intervals) / len(intervals)
+                    std_dev = (sum((x - avg_interval) ** 2 for x in intervals) / len(intervals)) ** 0.5
+                    
+                    # Determine frequency based on average interval
+                    frequency = "Unknown"
+                    if 25 <= avg_interval <= 35:
+                        frequency = "Monthly"
+                    elif 85 <= avg_interval <= 95:
+                        frequency = "Quarterly"
+                    elif 350 <= avg_interval <= 380:
+                        frequency = "Yearly"
+                    elif 13 <= avg_interval <= 17:
+                        frequency = "Bi-weekly"
+                    elif 6 <= avg_interval <= 8:
+                        frequency = "Weekly"
+                    
+                    # Check if pattern is consistent (low standard deviation)
+                    is_consistent = std_dev <= 5  # Allow 5 days variation
+                    
+                    # Check if recent (last transaction within last 60 days)
+                    try:
+                        last_date = datetime.strptime(dates[-1], '%Y-%m-%d')
+                        is_recent = (now - last_date).days <= 60
+                    except ValueError:
+                        is_recent = False
+                    
+                    # Consider it recurring if consistent pattern and recent
+                    if is_consistent and is_recent:
+                        # Analyze amount changes
+                        amounts = group_data["amounts"]
+                        current_amount = amounts[-1]  # Most recent amount
+                        previous_amount = amounts[-2] if len(amounts) > 1 else current_amount
+                        
+                        # Calculate amount change
+                        amount_change = current_amount - previous_amount
+                        amount_change_percent = (amount_change / previous_amount * 100) if previous_amount > 0 else 0
+                        
+                        # Determine if there's been a price increase
+                        has_increase = amount_change > 0.01  # More than 1 cent increase
+                        increase_alert = None
+                        
+                        if has_increase and amount_change_percent > 5:  # More than 5% increase
+                            increase_alert = f"Price increased by ${amount_change:.2f} ({amount_change_percent:.1f}%)"
+                        elif has_increase:
+                            increase_alert = f"Price increased by ${amount_change:.2f}"
+                        
+                        # Get the most recent transaction for additional details
+                        latest_transaction = max(group_data["transactions"], key=lambda x: x.date)
+                        
+                        subscription = {
+                            "id": f"sub_{len(recurring_subscriptions)}",
+                            "name": group_data["merchant"],
+                            "amount": round(current_amount, 2),
+                            "previous_amount": round(previous_amount, 2),
+                            "amount_change": round(amount_change, 2),
+                            "amount_change_percent": round(amount_change_percent, 1),
+                            "has_increase": has_increase,
+                            "increase_alert": increase_alert,
+                            "frequency": frequency,
+                            "last_date": dates[-1],
+                            "next_expected": None,
+                            "transaction_count": len(group_data["transactions"]),
+                            "avg_interval": round(avg_interval, 1),
+                            "category": latest_transaction.category[0] if latest_transaction.category else "Other"
+                        }
+                        
+                        # Calculate next expected date
+                        if frequency == "Monthly":
+                            next_date = last_date + timedelta(days=30)
+                        elif frequency == "Quarterly":
+                            next_date = last_date + timedelta(days=90)
+                        elif frequency == "Yearly":
+                            next_date = last_date + timedelta(days=365)
+                        elif frequency == "Bi-weekly":
+                            next_date = last_date + timedelta(days=14)
+                        elif frequency == "Weekly":
+                            next_date = last_date + timedelta(days=7)
+                        else:
+                            next_date = last_date + timedelta(days=avg_interval)
+                        
+                        subscription["next_expected"] = next_date.strftime('%Y-%m-%d')
+                        
+                        recurring_subscriptions.append(subscription)
+        
+        # Sort by amount (highest first)
+        recurring_subscriptions.sort(key=lambda x: x["amount"], reverse=True)
+        
+        logger.info(f"✅ Detected {len(recurring_subscriptions)} recurring subscriptions")
+        
+        if len(recurring_subscriptions) == 0:
+            return {
+                "subscriptions": [],
+                "message": "No recurring subscriptions detected. This could mean you don't have any subscriptions, or we need more transaction history.",
+                "has_data": False
+            }
+        
+        # Calculate total monthly cost
+        total_monthly = 0
+        for sub in recurring_subscriptions:
+            if sub["frequency"] == "Monthly":
+                total_monthly += sub["amount"]
+            elif sub["frequency"] == "Quarterly":
+                total_monthly += sub["amount"] / 3
+            elif sub["frequency"] == "Yearly":
+                total_monthly += sub["amount"] / 12
+            elif sub["frequency"] == "Bi-weekly":
+                total_monthly += sub["amount"] * 2
+            elif sub["frequency"] == "Weekly":
+                total_monthly += sub["amount"] * 4
+        
+        # Count subscriptions with price increases
+        price_increases = [sub for sub in recurring_subscriptions if sub["has_increase"]]
+        
+        return {
+            "subscriptions": recurring_subscriptions,
+            "total_monthly": round(total_monthly, 2),
+            "subscription_count": len(recurring_subscriptions),
+            "price_increases_count": len(price_increases),
+            "message": f"Found {len(recurring_subscriptions)} recurring subscriptions in your transaction history.",
+            "has_data": True
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Failed to detect recurring subscriptions: {str(e)}")
+        logger.error(f"❌ Error type: {type(e).__name__}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to detect recurring subscriptions: {str(e)}"
+        )
+
+@app.post("/api/v1/transactions/recurring/test")
+async def create_test_recurring_data(current_user: dict = Depends(get_current_user)):
+    """
+    Create test recurring subscription data for development/testing.
+    Requires authentication via Bearer token.
+    """
+    logger.info("🔄 Creating test recurring subscription data")
+    logger.info(f"👤 User ID: {current_user['user_id']}")
+    
+    try:
+        user_id = current_user["user_id"]
+        
+        # Get access token for user
+        access_token = get_access_token_for_user(user_id)
+        if not access_token:
+            logger.warning(f"⚠️ No access token found for user: {user_id}")
+            return {
+                "message": "No bank account connected. Connect your bank to test recurring subscriptions.",
+                "success": False
+            }
+        
+        # Create test transactions that simulate recurring subscriptions
+        test_subscriptions = [
+            {
+                "name": "Netflix",
+                "amount": 15.99,
+                "frequency": "Monthly",
+                "dates": ["2025-01-01", "2025-02-01", "2025-03-01", "2025-04-01", "2025-05-01", "2025-06-01"]
+            },
+            {
+                "name": "Spotify Premium",
+                "amount": 9.99,
+                "frequency": "Monthly", 
+                "dates": ["2025-01-05", "2025-02-05", "2025-03-05", "2025-04-05", "2025-05-05", "2025-06-05"]
+            },
+            {
+                "name": "Amazon Prime",
+                "amount": 12.99,
+                "frequency": "Monthly",
+                "dates": ["2025-01-10", "2025-02-10", "2025-03-10", "2025-04-10", "2025-05-10", "2025-06-10"]
+            },
+            {
+                "name": "Adobe Creative Cloud",
+                "amount": 52.99,
+                "frequency": "Monthly",
+                "dates": ["2025-01-15", "2025-02-15", "2025-03-15", "2025-04-15", "2025-05-15", "2025-06-15"]
+            },
+            {
+                "name": "Gym Membership",
+                "amount": 45.00,
+                "frequency": "Monthly",
+                "dates": ["2025-01-20", "2025-02-20", "2025-03-20", "2025-04-20", "2025-05-20", "2025-06-20"]
+            }
+        ]
+        
+        # Note: In a real implementation, you would add these transactions to the Plaid sandbox
+        # For now, we'll just return a success message
+        logger.info(f"✅ Test data created for {len(test_subscriptions)} subscriptions")
+        
+        return {
+            "message": f"Test data created for {len(test_subscriptions)} recurring subscriptions. Connect to Plaid sandbox to see real data.",
+            "test_subscriptions": test_subscriptions,
+            "success": True
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Failed to create test recurring data: {str(e)}")
+        logger.error(f"❌ Error type: {type(e).__name__}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to create test recurring data: {str(e)}"
+        )
+
+@app.post("/api/v1/alerts")
+async def create_alert_rule(request: CreateAlertRuleRequest, current_user: dict = Depends(get_current_user)):
+    """
+    Create a new alert rule.
+    Requires authentication via Bearer token.
+    """
+    logger.info("🔄 Creating new alert rule")
+    logger.info(f"👤 User ID: {current_user['user_id']}")
+    
+    try:
+        user_id = current_user["user_id"]
+        
+        # Validate alert type
+        valid_types = ["balance_low", "spending_high", "recurring_subscription", "budget_exceeded"]
+        if request.type not in valid_types:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid alert type. Must be one of: {', '.join(valid_types)}"
+            )
+        
+        # Create alert rule
+        alert_rule = AlertRule(
+            id=f"alert_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}",
+            user_id=user_id,
+            name=request.name,
+            type=request.type,
+            condition=f"{request.type} {request.threshold}",
+            threshold=request.threshold,
+            enabled=request.enabled,
+            created_at=datetime.now().isoformat()
+        )
+        
+        save_alert_rule(alert_rule)
+        
+        logger.info(f"✅ Alert rule created: {alert_rule.name}")
+        
+        return {
+            "message": "Alert rule created successfully",
+            "alert_rule": alert_rule
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Failed to create alert rule: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to create alert rule: {str(e)}"
+        )
+
+@app.get("/api/v1/alerts")
+async def get_alert_rules(current_user: dict = Depends(get_current_user)):
+    """
+    Get all alert rules for the current user.
+    Requires authentication via Bearer token.
+    """
+    logger.info("🔄 Fetching alert rules")
+    logger.info(f"👤 User ID: {current_user['user_id']}")
+    
+    try:
+        user_id = current_user["user_id"]
+        user_alerts = get_alert_rules_for_user(user_id)
+        
+        logger.info(f"✅ Retrieved {len(user_alerts)} alert rules for user {user_id}")
+        
+        return {
+            "alert_rules": user_alerts,
+            "count": len(user_alerts)
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Failed to fetch alert rules: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to fetch alert rules: {str(e)}"
+        )
+
+@app.delete("/api/v1/alerts/{alert_id}")
+async def delete_alert_rule(alert_id: str, current_user: dict = Depends(get_current_user)):
+    """
+    Delete an alert rule.
+    Requires authentication via Bearer token.
+    """
+    logger.info(f"🔄 Deleting alert rule: {alert_id}")
+    logger.info(f"👤 User ID: {current_user['user_id']}")
+    
+    try:
+        user_id = current_user["user_id"]
+        user_alerts = get_alert_rules_for_user(user_id)
+        
+        # Find and remove the alert rule
+        alert_found = False
+        for i, alert in enumerate(user_alerts):
+            if alert.id == alert_id:
+                deleted_alert = user_alerts.pop(i)
+                alert_found = True
+                logger.info(f"✅ Alert rule deleted: {deleted_alert.name}")
+                break
+        
+        if not alert_found:
+            raise HTTPException(
+                status_code=404,
+                detail="Alert rule not found"
+            )
+        
+        return {
+            "message": "Alert rule deleted successfully"
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Failed to delete alert rule: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to delete alert rule: {str(e)}"
+        )
+
+@app.patch("/api/v1/alerts/{alert_id}")
+async def update_alert_rule(alert_id: str, request: CreateAlertRuleRequest, current_user: dict = Depends(get_current_user)):
+    """
+    Update an alert rule.
+    Requires authentication via Bearer token.
+    """
+    logger.info(f"🔄 Updating alert rule: {alert_id}")
+    logger.info(f"👤 User ID: {current_user['user_id']}")
+    
+    try:
+        user_id = current_user["user_id"]
+        user_alerts = get_alert_rules_for_user(user_id)
+        
+        # Find and update the alert rule
+        alert_found = False
+        for alert in user_alerts:
+            if alert.id == alert_id:
+                alert.name = request.name
+                alert.type = request.type
+                alert.threshold = request.threshold
+                alert.enabled = request.enabled
+                alert.condition = f"{request.type} {request.threshold}"
+                alert_found = True
+                logger.info(f"✅ Alert rule updated: {alert.name}")
+                break
+        
+        if not alert_found:
+            raise HTTPException(
+                status_code=404,
+                detail="Alert rule not found"
+            )
+        
+        return {
+            "message": "Alert rule updated successfully"
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Failed to update alert rule: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to update alert rule: {str(e)}"
+        )
+
+@app.post("/api/v1/alerts/check")
+async def check_alerts(current_user: dict = Depends(get_current_user)):
+    """
+    Check all alert rules for the current user and trigger alerts if conditions are met.
+    Requires authentication via Bearer token.
+    """
+    logger.info("🔄 Checking alert rules")
+    logger.info(f"👤 User ID: {current_user['user_id']}")
+    
+    try:
+        user_id = current_user["user_id"]
+        user_alerts = get_alert_rules_for_user(user_id)
+        
+        if not user_alerts:
+            logger.info("ℹ️ No alert rules found for user")
+            return {
+                "message": "No alert rules to check",
+                "triggers": []
+            }
+        
+        # Get access token for user to fetch financial data
+        access_token = get_access_token_for_user(user_id)
+        if not access_token:
+            logger.warning(f"⚠️ No access token found for user: {user_id} - skipping alert checks")
+            return {
+                "message": "No bank account connected. Connect your bank to enable alert checks.",
+                "triggers": []
+            }
+        
+        triggered_alerts = []
+        
+        for alert_rule in user_alerts:
+            if not alert_rule.enabled:
+                continue
+                
+            try:
+                if alert_rule.type == "balance_low":
+                    # Check account balances
+                    accounts_response = get_accounts(access_token)
+                    if accounts_response and accounts_response.accounts:
+                        for account in accounts_response.accounts:
+                            if account.balances.current < alert_rule.threshold:
+                                trigger = AlertTrigger(
+                                    id=f"trigger_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}",
+                                    alert_rule_id=alert_rule.id,
+                                    user_id=user_id,
+                                    message=f"⚠️ Low balance alert: {account.name} balance is ${account.balances.current:.2f} (below ${alert_rule.threshold:.2f})",
+                                    triggered_at=datetime.now().isoformat()
+                                )
+                                save_alert_trigger(trigger)
+                                triggered_alerts.append(trigger)
+                                
+                                # Update alert rule trigger count
+                                alert_rule.trigger_count += 1
+                                alert_rule.last_triggered = datetime.now().isoformat()
+                                
+                elif alert_rule.type == "spending_high":
+                    # Check spending for the current week
+                    now = datetime.now()
+                    week_start = now - timedelta(days=now.weekday())
+                    week_start = week_start.replace(hour=0, minute=0, second=0, microsecond=0)
+                    
+                    transactions_response = get_transactions(
+                        access_token,
+                        week_start.strftime('%Y-%m-%d'),
+                        now.strftime('%Y-%m-%d'),
+                        1000
+                    )
+                    
+                    if transactions_response and transactions_response.transactions:
+                        total_spending = sum(abs(t.amount) for t in transactions_response.transactions if t.amount < 0)
+                        
+                        if total_spending > alert_rule.threshold:
+                            trigger = AlertTrigger(
+                                id=f"trigger_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}",
+                                alert_rule_id=alert_rule.id,
+                                user_id=user_id,
+                                message=f"💰 High spending alert: You've spent ${total_spending:.2f} this week (above ${alert_rule.threshold:.2f})",
+                                triggered_at=datetime.now().isoformat()
+                            )
+                            save_alert_trigger(trigger)
+                            triggered_alerts.append(trigger)
+                            
+                            # Update alert rule trigger count
+                            alert_rule.trigger_count += 1
+                            alert_rule.last_triggered = datetime.now().isoformat()
+                
+                elif alert_rule.type == "recurring_subscription":
+                    # Check for new recurring subscriptions
+                    # This would be implemented when we have subscription detection
+                    pass
+                
+                elif alert_rule.type == "budget_exceeded":
+                    # Check if any budgets are exceeded
+                    # This would be implemented when we have budget tracking
+                    pass
+                    
+            except Exception as e:
+                logger.error(f"❌ Error checking alert rule {alert_rule.id}: {str(e)}")
+                continue
+        
+        logger.info(f"✅ Alert check completed. {len(triggered_alerts)} alerts triggered")
+        
+        return {
+            "message": f"Alert check completed. {len(triggered_alerts)} alerts triggered.",
+            "triggers": triggered_alerts
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Failed to check alerts: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to check alerts: {str(e)}"
+        )
+
+@app.get("/api/v1/alerts/triggers")
+async def get_alert_triggers(current_user: dict = Depends(get_current_user)):
+    """
+    Get all alert triggers for the current user.
+    Requires authentication via Bearer token.
+    """
+    logger.info("🔄 Fetching alert triggers")
+    logger.info(f"👤 User ID: {current_user['user_id']}")
+    
+    try:
+        user_id = current_user["user_id"]
+        user_triggers = get_alert_triggers_for_user(user_id)
+        
+        # Sort by triggered_at (newest first)
+        user_triggers.sort(key=lambda x: x.triggered_at, reverse=True)
+        
+        logger.info(f"✅ Retrieved {len(user_triggers)} alert triggers for user {user_id}")
+        
+        return {
+            "triggers": user_triggers,
+            "count": len(user_triggers)
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Failed to fetch alert triggers: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to fetch alert triggers: {str(e)}"
+        )
+
+@app.patch("/api/v1/alerts/triggers/{trigger_id}/resolve")
+async def resolve_alert_trigger(trigger_id: str, current_user: dict = Depends(get_current_user)):
+    """
+    Mark an alert trigger as resolved.
+    Requires authentication via Bearer token.
+    """
+    logger.info(f"🔄 Resolving alert trigger: {trigger_id}")
+    logger.info(f"👤 User ID: {current_user['user_id']}")
+    
+    try:
+        user_id = current_user["user_id"]
+        user_triggers = get_alert_triggers_for_user(user_id)
+        
+        # Find and resolve the trigger
+        trigger_found = False
+        for trigger in user_triggers:
+            if trigger.id == trigger_id:
+                trigger.resolved = True
+                trigger.resolved_at = datetime.now().isoformat()
+                trigger_found = True
+                logger.info(f"✅ Alert trigger resolved: {trigger_id}")
+                break
+        
+        if not trigger_found:
+            raise HTTPException(
+                status_code=404,
+                detail="Alert trigger not found"
+            )
+        
+        return {
+            "message": "Alert trigger resolved successfully"
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Failed to resolve alert trigger: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to resolve alert trigger: {str(e)}"
+        )
+
+@app.get("/api/v1/reports/monthly")
+async def get_monthly_report(current_user: dict = Depends(get_current_user)):
+    """
+    Get monthly spending report with total spent per category for the current month.
+    Requires authentication via Bearer token.
+    """
+    logger.info("🔄 Fetching monthly spending report")
+    logger.info(f"👤 User ID: {current_user['user_id']}")
+    
+    try:
+        user_id = current_user["user_id"]
+        
+        # Get access token for user
+        access_token = get_access_token_for_user(user_id)
+        if not access_token:
+            logger.warning(f"⚠️ No access token found for user: {user_id}")
+            return {
+                "message": "Connect your bank account to view spending reports",
+                "total_spent": 0,
+                "categories": [],
+                "user_id": user_id
+            }
+        
+        # Calculate current month date range
+        now = datetime.now()
+        month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        month_end = now.replace(hour=23, minute=59, second=59, microsecond=999999)
+        
+        try:
+            transactions_response = get_transactions(
+                access_token,
+                month_start.strftime('%Y-%m-%d'),
+                month_end.strftime('%Y-%m-%d'),
+                1000
+            )
+            transactions = transactions_response.get('transactions', [])
+        except Exception as e:
+            logger.error(f"❌ Error fetching transactions for monthly report: {str(e)}")
+            return {
+                "message": "Unable to fetch transaction data",
+                "total_spent": 0,
+                "categories": [],
+                "user_id": user_id
+            }
+        
+        if not transactions:
+            logger.info(f"ℹ️ No transactions found for user: {user_id} in current month")
+            return {
+                "message": "No transactions found for the current month",
+                "total_spent": 0,
+                "categories": [],
+                "user_id": user_id
+            }
+        
+        # Analyze spending by category
+        category_spending = {}
+        total_spent = 0
+        
+        for transaction in transactions:
+            if transaction.get('amount') and transaction.get('amount') < 0:  # Only spending transactions
+                amount = abs(transaction['amount'])
+                category = transaction.get('category', ['Other'])[0] if transaction.get('category') else 'Other'
+                
+                if category not in category_spending:
+                    category_spending[category] = 0
+                
+                category_spending[category] += amount
+                total_spent += amount
+        
+        # Convert to list format for response
+        categories = []
+        for category, amount in category_spending.items():
+            percentage = (amount / total_spent * 100) if total_spent > 0 else 0
+            categories.append({
+                "category": category,
+                "amount": round(amount, 2),
+                "percentage": round(percentage, 1)
+            })
+        
+        # Sort by amount (highest first)
+        categories.sort(key=lambda x: x['amount'], reverse=True)
+        
+        logger.info(f"✅ Monthly report generated")
+        logger.info(f"💰 Total spent: ${total_spent:.2f}")
+        logger.info(f"📊 Categories: {len(categories)}")
+        
+        return {
+            "total_spent": round(total_spent, 2),
+            "categories": categories,
+            "month": now.strftime('%B %Y'),
+            "user_id": user_id
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Failed to get monthly report: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get monthly report: {str(e)}"
+        )
+
+@app.get("/api/v1/reports/weekly")
+async def get_weekly_report(current_user: dict = Depends(get_current_user)):
+    """
+    Get weekly spending report with daily spending totals for the past 7 days.
+    Requires authentication via Bearer token.
+    """
+    logger.info("🔄 Fetching weekly spending report")
+    logger.info(f"👤 User ID: {current_user['user_id']}")
+    
+    try:
+        user_id = current_user["user_id"]
+        
+        # Get access token for user
+        access_token = get_access_token_for_user(user_id)
+        if not access_token:
+            logger.warning(f"⚠️ No access token found for user: {user_id}")
+            return {
+                "message": "Connect your bank account to view spending reports",
+                "daily_spending": [],
+                "total_spent": 0,
+                "user_id": user_id
+            }
+        
+        # Calculate past 7 days date range
+        now = datetime.now()
+        week_start = now - timedelta(days=7)
+        week_start = week_start.replace(hour=0, minute=0, second=0, microsecond=0)
+        week_end = now.replace(hour=23, minute=59, second=59, microsecond=999999)
+        
+        try:
+            transactions_response = get_transactions(
+                access_token,
+                week_start.strftime('%Y-%m-%d'),
+                week_end.strftime('%Y-%m-%d'),
+                1000
+            )
+            transactions = transactions_response.get('transactions', [])
+        except Exception as e:
+            logger.error(f"❌ Error fetching transactions for weekly report: {str(e)}")
+            return {
+                "message": "Unable to fetch transaction data",
+                "daily_spending": [],
+                "total_spent": 0,
+                "user_id": user_id
+            }
+        
+        if not transactions:
+            logger.info(f"ℹ️ No transactions found for user: {user_id} in past 7 days")
+            return {
+                "message": "No transactions found for the past 7 days",
+                "daily_spending": [],
+                "total_spent": 0,
+                "user_id": user_id
+            }
+        
+        # Initialize daily spending dictionary
+        daily_spending = {}
+        total_spent = 0
+        
+        # Initialize all 7 days with 0 spending
+        for i in range(7):
+            date = (now - timedelta(days=i)).strftime('%Y-%m-%d')
+            daily_spending[date] = 0
+        
+        # Analyze spending by day
+        for transaction in transactions:
+            if transaction.get('amount') and transaction.get('amount') < 0:  # Only spending transactions
+                amount = abs(transaction['amount'])
+                date = transaction.get('date', '')
+                
+                if date in daily_spending:
+                    daily_spending[date] += amount
+                    total_spent += amount
+        
+        # Convert to list format for response (reverse chronological order)
+        daily_data = []
+        for i in range(6, -1, -1):  # Last 7 days in reverse order
+            date = (now - timedelta(days=i))
+            date_str = date.strftime('%Y-%m-%d')
+            day_name = date.strftime('%A')
+            
+            daily_data.append({
+                "date": date_str,
+                "day": day_name,
+                "amount": round(daily_spending.get(date_str, 0), 2)
+            })
+        
+        logger.info(f"✅ Weekly report generated")
+        logger.info(f"💰 Total spent: ${total_spent:.2f}")
+        logger.info(f"📊 Days with transactions: {len([d for d in daily_data if d['amount'] > 0])}")
+        
+        return {
+            "daily_spending": daily_data,
+            "total_spent": round(total_spent, 2),
+            "period": f"{week_start.strftime('%B %d')} - {now.strftime('%B %d, %Y')}",
+            "user_id": user_id
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Failed to get weekly report: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get weekly report: {str(e)}"
+        )
+
+@app.get("/api/v1/reports/categories")
+async def get_category_report(current_user: dict = Depends(get_current_user)):
+    """
+    Get category spending report with percentage breakdown of all spending by category.
+    Requires authentication via Bearer token.
+    """
+    logger.info("🔄 Fetching category spending report")
+    logger.info(f"👤 User ID: {current_user['user_id']}")
+    
+    try:
+        user_id = current_user["user_id"]
+        
+        # Get access token for user
+        access_token = get_access_token_for_user(user_id)
+        if not access_token:
+            logger.warning(f"⚠️ No access token found for user: {user_id}")
+            return {
+                "message": "Connect your bank account to view spending reports",
+                "total_spent": 0,
+                "categories": [],
+                "user_id": user_id
+            }
+        
+        # Get transactions from the last 3 months for a comprehensive view
+        now = datetime.now()
+        start_date = now - timedelta(days=90)
+        start_date = start_date.replace(hour=0, minute=0, second=0, microsecond=0)
+        end_date = now.replace(hour=23, minute=59, second=59, microsecond=999999)
+        
+        try:
+            transactions_response = get_transactions(
+                access_token,
+                start_date.strftime('%Y-%m-%d'),
+                end_date.strftime('%Y-%m-%d'),
+                2000
+            )
+            transactions = transactions_response.get('transactions', [])
+        except Exception as e:
+            logger.error(f"❌ Error fetching transactions for category report: {str(e)}")
+            return {
+                "message": "Unable to fetch transaction data",
+                "total_spent": 0,
+                "categories": [],
+                "user_id": user_id
+            }
+        
+        if not transactions:
+            logger.info(f"ℹ️ No transactions found for user: {user_id} in past 3 months")
+            return {
+                "message": "No transactions found for the past 3 months",
+                "total_spent": 0,
+                "categories": [],
+                "user_id": user_id
+            }
+        
+        # Analyze spending by category
+        category_spending = {}
+        total_spent = 0
+        
+        for transaction in transactions:
+            if transaction.get('amount') and transaction.get('amount') < 0:  # Only spending transactions
+                amount = abs(transaction['amount'])
+                category = transaction.get('category', ['Other'])[0] if transaction.get('category') else 'Other'
+                
+                if category not in category_spending:
+                    category_spending[category] = {
+                        'amount': 0,
+                        'transaction_count': 0,
+                        'avg_amount': 0
+                    }
+                
+                category_spending[category]['amount'] += amount
+                category_spending[category]['transaction_count'] += 1
+                total_spent += amount
+        
+        # Calculate averages and percentages
+        categories = []
+        for category, data in category_spending.items():
+            percentage = (data['amount'] / total_spent * 100) if total_spent > 0 else 0
+            avg_amount = data['amount'] / data['transaction_count'] if data['transaction_count'] > 0 else 0
+            
+            categories.append({
+                "category": category,
+                "amount": round(data['amount'], 2),
+                "percentage": round(percentage, 1),
+                "transaction_count": data['transaction_count'],
+                "avg_amount": round(avg_amount, 2)
+            })
+        
+        # Sort by amount (highest first)
+        categories.sort(key=lambda x: x['amount'], reverse=True)
+        
+        logger.info(f"✅ Category report generated")
+        logger.info(f"💰 Total spent: ${total_spent:.2f}")
+        logger.info(f"📊 Categories: {len(categories)}")
+        
+        return {
+            "total_spent": round(total_spent, 2),
+            "categories": categories,
+            "period": f"{start_date.strftime('%B %d, %Y')} - {now.strftime('%B %d, %Y')}",
+            "user_id": user_id
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Failed to get category report: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get category report: {str(e)}"
+        )
+
+# Email Preferences Models
+class EmailPreferences(BaseModel):
+    weekly_email_summary: bool = False
+    budget_alerts: bool = True
+    spending_alerts: bool = True
+    account_alerts: bool = True
+
+class EmailPreferencesUpdate(BaseModel):
+    weekly_email_summary: Optional[bool] = None
+    budget_alerts: Optional[bool] = None
+    spending_alerts: Optional[bool] = None
+    account_alerts: Optional[bool] = None
+
+@app.get("/api/v1/email/preferences")
+async def get_email_preferences(current_user: dict = Depends(get_current_user)):
+    """
+    Get user's email notification preferences.
+    Requires authentication via Bearer token.
+    """
+    logger.info("🔄 Fetching email preferences")
+    logger.info(f"👤 User ID: {current_user['user_id']}")
+    
+    try:
+        user_id = current_user["user_id"]
+        preferences = weekly_scheduler.get_all_user_preferences(user_id)
+        
+        # Return default preferences if none set
+        email_prefs = {
+            "weekly_email_summary": preferences.get("weekly_email_summary", False),
+            "budget_alerts": preferences.get("budget_alerts", True),
+            "spending_alerts": preferences.get("spending_alerts", True),
+            "account_alerts": preferences.get("account_alerts", True)
+        }
+        
+        logger.info(f"✅ Retrieved email preferences for user {user_id}")
+        return email_prefs
+        
+    except Exception as e:
+        logger.error(f"❌ Failed to get email preferences: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get email preferences: {str(e)}"
+        )
+
+@app.patch("/api/v1/email/preferences")
+async def update_email_preferences(
+    preferences: EmailPreferencesUpdate,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Update user's email notification preferences.
+    Requires authentication via Bearer token.
+    """
+    logger.info("🔄 Updating email preferences")
+    logger.info(f"👤 User ID: {current_user['user_id']}")
+    
+    try:
+        user_id = current_user["user_id"]
+        
+        # Update each preference if provided
+        if preferences.weekly_email_summary is not None:
+            weekly_scheduler.set_user_preference(user_id, "weekly_email_summary", preferences.weekly_email_summary)
+            logger.info(f"📧 Set weekly_email_summary={preferences.weekly_email_summary} for user {user_id}")
+        
+        if preferences.budget_alerts is not None:
+            weekly_scheduler.set_user_preference(user_id, "budget_alerts", preferences.budget_alerts)
+            logger.info(f"📧 Set budget_alerts={preferences.budget_alerts} for user {user_id}")
+        
+        if preferences.spending_alerts is not None:
+            weekly_scheduler.set_user_preference(user_id, "spending_alerts", preferences.spending_alerts)
+            logger.info(f"📧 Set spending_alerts={preferences.spending_alerts} for user {user_id}")
+        
+        if preferences.account_alerts is not None:
+            weekly_scheduler.set_user_preference(user_id, "account_alerts", preferences.account_alerts)
+            logger.info(f"📧 Set account_alerts={preferences.account_alerts} for user {user_id}")
+        
+        # Return updated preferences
+        updated_prefs = weekly_scheduler.get_all_user_preferences(user_id)
+        email_prefs = {
+            "weekly_email_summary": updated_prefs.get("weekly_email_summary", False),
+            "budget_alerts": updated_prefs.get("budget_alerts", True),
+            "spending_alerts": updated_prefs.get("spending_alerts", True),
+            "account_alerts": updated_prefs.get("account_alerts", True)
+        }
+        
+        logger.info(f"✅ Updated email preferences for user {user_id}")
+        return email_prefs
+        
+    except Exception as e:
+        logger.error(f"❌ Failed to update email preferences: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to update email preferences: {str(e)}"
+        )
+
+@app.post("/api/v1/email/test-weekly")
+async def test_weekly_email(current_user: dict = Depends(get_current_user)):
+    """
+    Send a test weekly email summary to the current user.
+    Requires authentication via Bearer token.
+    """
+    logger.info("🔄 Sending test weekly email")
+    logger.info(f"👤 User ID: {current_user['user_id']}")
+    
+    try:
+        user_id = current_user["user_id"]
+        
+        # Temporarily enable weekly emails for this user
+        weekly_scheduler.set_user_preference(user_id, "weekly_email_summary", True)
+        
+        # Send the weekly summary
+        weekly_scheduler.send_weekly_summary_for_user(user_id)
+        
+        logger.info(f"✅ Test weekly email sent to user {user_id}")
+        return {
+            "message": "Test weekly email sent successfully",
+            "user_id": user_id
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Failed to send test weekly email: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to send test weekly email: {str(e)}"
+        )
+
+# Initialize the weekly email scheduler when the app starts
+@app.on_event("startup")
+async def startup_event():
+    """Initialize services when the app starts."""
+    logger.info("🚀 Starting LivyFlow API...")
+    
+    # Schedule weekly email summaries
+    weekly_scheduler.schedule_weekly_emails()
+    
+    logger.info("✅ LivyFlow API started successfully")
+
+@app.get("/api/v1/debug/send-test-summary")
+async def debug_send_test_summary(user_id: str, request: Request):
+    """
+    Debug route to send a mock weekly summary email to the specified user_id.
+    No authentication required (for local testing only).
+    """
+    logger.info(f"[DEBUG] Sending test summary email for user_id={user_id}")
+    try:
+        from app.scheduler import weekly_scheduler
+        # Temporarily enable weekly emails for this user
+        weekly_scheduler.set_user_preference(user_id, "weekly_email_summary", True)
+        # Send the weekly summary (uses mock data if user not found)
+        weekly_scheduler.send_weekly_summary_for_user(user_id)
+        return {"message": f"Test weekly summary email sent for user_id={user_id}"}
+    except Exception as e:
+        logger.error(f"[DEBUG] Failed to send test summary: {str(e)}")
+        return {"error": str(e)}
 
 if __name__ == "__main__":
     import uvicorn

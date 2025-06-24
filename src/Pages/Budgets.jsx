@@ -6,6 +6,7 @@ import BudgetModal from '../components/budgets/BudgetModal';
 import BudgetCard from '../components/budgets/BudgetCard';
 import BudgetCharts from '../components/budgets/BudgetCharts';
 import BudgetSuggestions from '../components/budgets/BudgetSuggestions';
+import BudgetRecommendations from '../components/budgets/BudgetRecommendations';
 
 export default function Budgets() {
   const { user } = useAuth();
@@ -131,6 +132,19 @@ export default function Budgets() {
       console.error("❌ Error applying budget suggestion:", error);
       throw error;
     }
+  };
+
+  // Handle using a budget recommendation
+  const handleUseRecommendation = (category, amount) => {
+    console.log("🚀 Using budget recommendation:", category, amount);
+    
+    // Pre-fill the budget modal with the recommendation
+    setEditingBudget({
+      category: category,
+      monthly_limit: amount,
+      description: `Recommended budget for ${category}`
+    });
+    setIsModalOpen(true);
   };
 
   const handleEditBudget = (budget) => {
@@ -311,6 +325,11 @@ export default function Budgets() {
       {/* Smart Budget Suggestions */}
       <div className="mb-8">
         <BudgetSuggestions onApplySuggestion={handleApplySuggestion} />
+      </div>
+
+      {/* Budget Recommendations */}
+      <div className="mb-8">
+        <BudgetRecommendations onUseRecommendation={handleUseRecommendation} />
       </div>
 
       {/* Budgets List */}

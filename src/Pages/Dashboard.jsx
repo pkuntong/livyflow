@@ -4,9 +4,11 @@ import FinancialOverview from '../../Components/dashboard/FinancialOverview.js';
 import MonthlySpendingChart from '../../Components/dashboard/MonthlySpendingChart.js';
 import SpendingTrendChart from '../../Components/dashboard/SpendingTrendChart.js';
 import SpendingTrendsChart from '../components/dashboard/SpendingTrendsChart.jsx';
+import MonthlyInsightsPanel from '../components/dashboard/MonthlyInsightsPanel.jsx';
 import Alerts from '../components/Alerts.jsx';
 import Export from '../components/Export.jsx';
 import Insights from '../components/Insights.jsx';
+import RecurringSubscriptions from '../components/RecurringSubscriptions.jsx';
 import { useAuth } from '../contexts/AuthContext';
 import plaidService from '../services/plaidService';
 import { createNotification } from '../services/notificationService';
@@ -132,6 +134,11 @@ export default function Dashboard({ accounts, transactions }) {
         <Insights />
       </div>
 
+      {/* Monthly Insights Panel */}
+      <div className="mb-8">
+        <MonthlyInsightsPanel />
+      </div>
+
       {/* Additional Dashboard Components */}
       <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-8">
         {/* Recent Transactions */}
@@ -229,11 +236,36 @@ export default function Dashboard({ accounts, transactions }) {
           </div>
         </div>
 
+        {/* Recurring Subscriptions */}
+        <RecurringSubscriptions />
+
         {/* Monthly Spending Summary Chart */}
         <MonthlySpendingChart />
+      </div>
 
+      {/* Second Row - Full Width Components */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
         {/* Spending Trend Over Time Chart */}
         <SpendingTrendChart />
+        
+        {/* Placeholder for future component */}
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+          <h2 className="text-xl font-semibold text-gray-900 mb-4">Quick Actions</h2>
+          <div className="space-y-3">
+            <button className="w-full text-left p-3 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors">
+              <div className="font-medium text-gray-900">📊 View Analytics</div>
+              <div className="text-sm text-gray-600">Detailed spending analysis</div>
+            </button>
+            <button className="w-full text-left p-3 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors">
+              <div className="font-medium text-gray-900">🎯 Set Budget Goals</div>
+              <div className="text-sm text-gray-600">Create and track budgets</div>
+            </button>
+            <button className="w-full text-left p-3 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors">
+              <div className="font-medium text-gray-900">📈 Track Progress</div>
+              <div className="text-sm text-gray-600">Monitor financial goals</div>
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* Spending Trends Chart - Full Width */}
