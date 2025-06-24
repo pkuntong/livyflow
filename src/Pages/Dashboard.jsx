@@ -1,8 +1,117 @@
-import React from 'react';
-import { Receipt } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Receipt, RefreshCw } from 'lucide-react';
 import FinancialOverview from '../../Components/dashboard/FinancialOverview.js';
+import MonthlySpendingChart from '../../Components/dashboard/MonthlySpendingChart.js';
+import SpendingTrendChart from '../../Components/dashboard/SpendingTrendChart.js';
+import SpendingTrendsChart from '../components/dashboard/SpendingTrendsChart.jsx';
+import Alerts from '../components/Alerts.jsx';
+import Export from '../components/Export.jsx';
+import Insights from '../components/Insights.jsx';
+import { useAuth } from '../contexts/AuthContext';
+import plaidService from '../services/plaidService';
+import { createNotification } from '../services/notificationService';
 
 export default function Dashboard({ accounts, transactions }) {
+  const { user } = useAuth();
+  const [plaidTransactions, setPlaidTransactions] = useState([]);
+  const [plaidTransactionsLoading, setPlaidTransactionsLoading] = useState(false);
+  const [plaidTransactionsError, setPlaidTransactionsError] = useState(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [hasShownWelcome, setHasShownWelcome] = useState(false);
+
+  // Fetch Plaid transactions when user is authenticated
+  useEffect(() => {
+    if (!user) {
+      console.log("🔒 User not authenticated, skipping Plaid transactions fetch");
+      setPlaidTransactions([]);
+      return;
+    }
+
+    fetchPlaidTransactions();
+  }, [user]);
+
+  // Show welcome notification on first visit
+  useEffect(() => {
+    if (user && !hasShownWelcome) {
+      const showWelcome = async () => {
+        try {
+          await createNotification({
+            title: "Welcome to LivyFlow! 🎉",
+            message: "Your financial journey starts here. We'll help you track spending, set budgets, and achieve your financial goals.",
+            type: "success"
+          });
+          setHasShownWelcome(true);
+        } catch (error) {
+          console.error("Error creating welcome notification:", error);
+        }
+      };
+      
+      showWelcome();
+    }
+  }, [user, hasShownWelcome]);
+
+  // Combine manual transactions with Plaid transactions
+  const allTransactions = [...transactions, ...plaidTransactions];
+
+  // Get Plaid accounts from the Accounts page context or fetch them here
+  // For now, we'll use the accounts prop and let the Accounts page handle Plaid accounts separately
+
+  // Function to fetch Plaid transactions
+  const fetchPlaidTransactions = async () => {
+    try {
+      setPlaidTransactionsLoading(true);
+      setPlaidTransactionsError(null);
+      console.log("🔄 Fetching Plaid transactions...");
+      
+      const response = await plaidService.getTransactions(null, null, 500); // Get more transactions for better data
+      console.log("✅ Plaid transactions fetched:", response);
+      
+      setPlaidTransactions(response.transactions || []);
+    } catch (error) {
+      console.error("❌ Error fetching Plaid transactions:", error);
+      
+      // Handle specific error cases
+      if (error.response?.status === 400) {
+        // No bank account connected - this is expected for new users
+        setPlaidTransactionsError("No bank account connected. Connect your bank account to see transactions.");
+        setPlaidTransactions([]);
+      } else if (error.response?.status === 401) {
+        // Authentication error
+        setPlaidTransactionsError("Authentication failed. Please sign in again.");
+        setPlaidTransactions([]);
+      } else if (error.response?.status === 403) {
+        // Forbidden
+        setPlaidTransactionsError("Access denied. Please check your permissions.");
+        setPlaidTransactions([]);
+      } else {
+        // Generic error
+        setPlaidTransactionsError(error.message || "Failed to fetch transactions");
+        setPlaidTransactions([]);
+      }
+    } finally {
+      setPlaidTransactionsLoading(false);
+    }
+  };
+
+  // Manual refresh function
+  const handleRefresh = async () => {
+    if (!user) {
+      console.log("🔒 User not authenticated, cannot refresh");
+      return;
+    }
+
+    setIsRefreshing(true);
+    try {
+      console.log("🔄 Manual refresh started...");
+      await fetchPlaidTransactions();
+      console.log("✅ Manual refresh completed");
+    } catch (error) {
+      console.error("❌ Manual refresh failed:", error);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
   return (
     <div className="max-w-7xl mx-auto p-8">
       <div className="mb-8">
@@ -10,66 +119,131 @@ export default function Dashboard({ accounts, transactions }) {
         <p className="text-gray-600 mt-1">Welcome back! Here's your financial overview.</p>
       </div>
 
+      {/* Financial Alerts */}
+      <Alerts />
+
       {/* Financial Overview Cards */}
       <div className="mb-8">
-        <FinancialOverview accounts={accounts} transactions={transactions} />
+        <FinancialOverview accounts={accounts} transactions={allTransactions} />
+      </div>
+
+      {/* AI Insights */}
+      <div className="mb-8">
+        <Insights />
       </div>
 
       {/* Additional Dashboard Components */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-8">
         {/* Recent Transactions */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100">
           <div className="p-6 flex items-center justify-between border-b border-gray-100">
             <h2 className="text-xl font-semibold text-gray-900">Recent Transactions</h2>
-            <button className="inline-flex items-center justify-center rounded-lg bg-white px-4 py-2 text-sm font-medium shadow-sm border border-gray-200 hover:bg-gray-50">
-              + Add Transaction
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleRefresh}
+                disabled={isRefreshing || plaidTransactionsLoading}
+                className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+                {isRefreshing ? 'Refreshing...' : 'Refresh'}
+              </button>
+              <button className="inline-flex items-center justify-center rounded-lg bg-white px-4 py-2 text-sm font-medium shadow-sm border border-gray-200 hover:bg-gray-50">
+                + Add Transaction
+              </button>
+            </div>
           </div>
           <div className="p-6">
+            {plaidTransactionsLoading && (
+              <div className="flex items-center justify-center py-8">
+                <div className="flex items-center gap-2 text-blue-600">
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+                  Loading transactions...
+                </div>
+              </div>
+            )}
+            
+            {plaidTransactionsError && (
+              <div className={`p-4 border rounded-lg mb-4 ${
+                plaidTransactionsError.includes("No bank account connected") 
+                  ? "bg-blue-50 border-blue-200" 
+                  : "bg-red-50 border-red-200"
+              }`}>
+                <p className={`text-sm ${
+                  plaidTransactionsError.includes("No bank account connected") 
+                    ? "text-blue-800" 
+                    : "text-red-800"
+                }`}>
+                  {plaidTransactionsError.includes("No bank account connected") 
+                    ? "💡 " + plaidTransactionsError 
+                    : "❌ " + plaidTransactionsError}
+                </p>
+              </div>
+            )}
+            
             <div className="space-y-6">
-              {transactions.map((transaction) => (
-                <div key={transaction.id} className="flex items-center justify-between">
-                  <div className="flex items-center gap-4">
-                    <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center">
-                      <Receipt className="w-5 h-5 text-red-600" />
-                    </div>
-                    <div>
-                      <p className="font-medium text-gray-900">{transaction.description}</p>
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs px-2 py-1 rounded-full bg-blue-100 text-blue-800">
-                          {transaction.category.replace(/_/g, ' ')}
-                        </span>
-                        <span className="text-sm text-gray-500">Unknown Account</span>
+              {allTransactions.length > 0 ? (
+                allTransactions.map((transaction, index) => (
+                  <div key={transaction.id || transaction.transaction_id || index} className="flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                      <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center">
+                        <Receipt className="w-5 h-5 text-red-600" />
+                      </div>
+                      <div>
+                        <p className="font-medium text-gray-900">
+                          {transaction.name || transaction.description || transaction.merchant_name || 'Unknown Transaction'}
+                        </p>
+                        <div className="flex items-center gap-2">
+                          {transaction.category && (
+                            <span className="text-xs px-2 py-1 rounded-full bg-blue-100 text-blue-800">
+                              {Array.isArray(transaction.category) 
+                                ? transaction.category[0]?.replace(/_/g, ' ') 
+                                : transaction.category.replace(/_/g, ' ')}
+                            </span>
+                          )}
+                          <span className="text-sm text-gray-500">
+                            {transaction.isPlaidConnected ? 'Connected Account' : 'Unknown Account'}
+                          </span>
+                        </div>
                       </div>
                     </div>
+                    <div className="text-right">
+                      <p className={`font-semibold ${transaction.amount < 0 ? 'text-red-600' : 'text-green-600'}`}>
+                        {transaction.amount < 0 ? '-' : '+'}${Math.abs(transaction.amount).toFixed(2)}
+                      </p>
+                      <p className="text-sm text-gray-500">
+                        {transaction.date ? new Date(transaction.date).toLocaleDateString('en-US', { 
+                          month: 'short', 
+                          day: 'numeric' 
+                        }) : 'Unknown Date'}
+                      </p>
+                    </div>
                   </div>
-                  <div className="text-right">
-                    <p className="font-semibold text-red-600">
-                      ${Math.abs(transaction.amount).toFixed(2)}
-                    </p>
-                    <p className="text-sm text-gray-500">
-                      Dec {transaction.date.split('-')[2]}
-                    </p>
-                  </div>
+                ))
+              ) : (
+                <div className="text-center py-8 text-gray-500">
+                  <p>No transactions found</p>
+                  <p className="text-sm mt-1">Add some transactions or connect your bank account to see activity</p>
                 </div>
-              ))}
+              )}
             </div>
           </div>
         </div>
 
-        {/* Spending by Category */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100">
-          <div className="p-6 border-b border-gray-100">
-            <h2 className="text-xl font-semibold text-gray-900">Spending by Category</h2>
-            <p className="text-sm text-gray-600 mt-1">Current month breakdown</p>
-          </div>
-          <div className="p-6 flex items-center justify-center h-[300px]">
-            <div className="text-center text-gray-500">
-              <p>No expense data for this month</p>
-              <p className="text-sm mt-1">Add some transactions to see the breakdown</p>
-            </div>
-          </div>
-        </div>
+        {/* Monthly Spending Summary Chart */}
+        <MonthlySpendingChart />
+
+        {/* Spending Trend Over Time Chart */}
+        <SpendingTrendChart />
+      </div>
+
+      {/* Spending Trends Chart - Full Width */}
+      <div className="mb-8">
+        <SpendingTrendsChart />
+      </div>
+
+      {/* Export Section */}
+      <div className="mb-8">
+        <Export />
       </div>
     </div>
   );

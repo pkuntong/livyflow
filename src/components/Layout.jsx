@@ -2,6 +2,7 @@ import React from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { LayoutGrid, Receipt, PiggyBank, CreditCard, LineChart, User, LogOut } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import Notifications from './Notifications';
 
 export default function Layout() {
   const location = useLocation();
@@ -80,7 +81,28 @@ export default function Layout() {
 
       {/* Main Content */}
       <main className="main-content flex-1">
-        <Outlet />
+        {/* Header with Notifications */}
+        <header className="bg-white border-b border-gray-200 px-6 py-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-xl font-semibold text-gray-900">
+                {location.pathname === '/app/dashboard' && 'Dashboard'}
+                {location.pathname === '/app/transactions' && 'Transactions'}
+                {location.pathname === '/app/budgets' && 'Budgets'}
+                {location.pathname === '/app/accounts' && 'Accounts'}
+                {location.pathname === '/app/analytics' && 'Analytics'}
+              </h2>
+            </div>
+            <div className="flex items-center space-x-4">
+              <Notifications />
+            </div>
+          </div>
+        </header>
+        
+        {/* Page Content */}
+        <div className="p-6">
+          <Outlet />
+        </div>
       </main>
     </div>
   );

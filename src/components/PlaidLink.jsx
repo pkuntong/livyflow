@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { usePlaidLink } from 'react-plaid-link';
 import { useAuth } from '../contexts/AuthContext';
 import plaidService from '../services/plaidService';
+import { createNotification } from '../services/notificationService';
 
 const PlaidLink = ({ onSuccess, onExit, children }) => {
   const { user } = useAuth();
@@ -69,6 +70,18 @@ const PlaidLink = ({ onSuccess, onExit, children }) => {
       console.log("✅ Access token exchange successful:", result);
       console.log("🔑 Access Token:", result.access_token);
       console.log("🆔 Item ID:", result.item_id);
+      
+      // Create success notification
+      try {
+        const institutionName = metadata.institution?.name || 'your bank';
+        await createNotification({
+          title: "Bank Account Connected! 🏦",
+          message: `Successfully connected your ${institutionName} account. You can now view your transactions and account balances.`,
+          type: "success"
+        });
+      } catch (notificationError) {
+        console.error("Error creating notification:", notificationError);
+      }
       
       // Call the success callback with the result
       if (onSuccess) {

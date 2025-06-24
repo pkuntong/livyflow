@@ -1,7 +1,9 @@
-import React, { useState } from 'react';
-import { Plus, Search, Filter, ArrowDownLeft } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Plus, Search, Filter, ArrowDownLeft, Calendar, DollarSign } from 'lucide-react';
 import { Menu } from '@headlessui/react';
 import TransactionModal from '../components/transactions/TransactionModal';
+import { useAuth } from '../contexts/AuthContext';
+import plaidService from '../services/plaidService';
 
 const CATEGORIES = [
   { value: 'all', label: 'All Categories' },
@@ -104,12 +106,70 @@ function FilterDropdown({ options, value, onChange, buttonClassName }) {
 }
 
 export default function Transactions() {
+  const { user } = useAuth();
   const [transactions, setTransactions] = useState(initialTransactions);
+  const [plaidTransactions, setPlaidTransactions] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedTransaction, setSelectedTransaction] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [selectedAccount, setSelectedAccount] = useState('all');
+  
+  // New filter states
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [minAmount, setMinAmount] = useState('');
+  const [maxAmount, setMaxAmount] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+
+  // Fetch Plaid transactions when user is authenticated
+  useEffect(() => {
+    if (!user) {
+      console.log("🔒 User not authenticated, skipping Plaid transactions fetch");
+      setPlaidTransactions([]);
+      return;
+    }
+
+    const fetchPlaidTransactions = async () => {
+      try {
+        setIsLoading(true);
+        console.log("🔄 Fetching Plaid transactions...");
+        
+        const response = await plaidService.getTransactions(null, null, 100); // Get more transactions for filtering
+        console.log("✅ Plaid transactions fetched:", response);
+        
+        setPlaidTransactions(response.transactions || []);
+      } catch (error) {
+        console.error("❌ Error fetching Plaid transactions:", error);
+        
+        // Handle specific error cases
+        if (error.response?.status === 400) {
+          // No bank account connected - this is expected for new users
+          console.log("💡 No bank account connected yet - this is normal for new users");
+          setPlaidTransactions([]);
+        } else if (error.response?.status === 401) {
+          // Authentication error
+          console.error("❌ Authentication failed");
+          setPlaidTransactions([]);
+        } else if (error.response?.status === 403) {
+          // Forbidden
+          console.error("❌ Access denied");
+          setPlaidTransactions([]);
+        } else {
+          // Generic error
+          console.error("❌ Failed to fetch transactions:", error.message);
+          setPlaidTransactions([]);
+        }
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchPlaidTransactions();
+  }, [user]);
+
+  // Combine manual and Plaid transactions
+  const allTransactions = [...transactions, ...plaidTransactions];
 
   const handleAddTransaction = (newTransaction) => {
     if (selectedTransaction) {
@@ -134,21 +194,51 @@ export default function Transactions() {
     setIsModalOpen(true);
   };
 
-  const filteredTransactions = transactions.filter(transaction => {
+  const filteredTransactions = allTransactions.filter(transaction => {
     const searchLower = searchQuery.toLowerCase();
     const matchesSearch = searchQuery === '' || 
-                         transaction.description.toLowerCase().includes(searchLower) ||
-                         transaction.notes.toLowerCase().includes(searchLower);
-    const matchesCategory = selectedCategory === 'all' || transaction.category === selectedCategory;
-    const matchesAccount = selectedAccount === 'all' || transaction.account_id.toString() === selectedAccount;
+                         (transaction.description || transaction.name || '').toLowerCase().includes(searchLower) ||
+                         (transaction.notes || '').toLowerCase().includes(searchLower);
     
-    return matchesSearch && matchesCategory && matchesAccount;
+    const matchesCategory = selectedCategory === 'all' || 
+                           transaction.category === selectedCategory ||
+                           (Array.isArray(transaction.category) && transaction.category.includes(selectedCategory));
+    
+    const matchesAccount = selectedAccount === 'all' || 
+                          transaction.account_id?.toString() === selectedAccount;
+    
+    // Date range filter
+    const transactionDate = new Date(transaction.date);
+    const matchesStartDate = !startDate || transactionDate >= new Date(startDate);
+    const matchesEndDate = !endDate || transactionDate <= new Date(endDate);
+    
+    // Amount range filter
+    const amount = Math.abs(transaction.amount);
+    const matchesMinAmount = !minAmount || amount >= parseFloat(minAmount);
+    const matchesMaxAmount = !maxAmount || amount <= parseFloat(maxAmount);
+    
+    return matchesSearch && matchesCategory && matchesAccount && 
+           matchesStartDate && matchesEndDate && 
+           matchesMinAmount && matchesMaxAmount;
   });
 
   const formatDate = (dateString) => {
     const options = { month: 'short', day: 'numeric', year: 'numeric' };
     return new Date(dateString).toLocaleDateString('en-US', options);
   };
+
+  const clearAllFilters = () => {
+    setSearchQuery('');
+    setSelectedCategory('all');
+    setSelectedAccount('all');
+    setStartDate('');
+    setEndDate('');
+    setMinAmount('');
+    setMaxAmount('');
+  };
+
+  const hasActiveFilters = searchQuery || selectedCategory !== 'all' || selectedAccount !== 'all' || 
+                          startDate || endDate || minAmount || maxAmount;
 
   return (
     <div className="p-8">
@@ -171,13 +261,24 @@ export default function Transactions() {
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 mb-6">
         <div className="p-6">
-          <div className="flex items-center gap-2 mb-4">
-            <Filter className="w-5 h-5 text-gray-600" />
-            <h2 className="text-lg font-semibold text-gray-900">Filters</h2>
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <Filter className="w-5 h-5 text-gray-600" />
+              <h2 className="text-lg font-semibold text-gray-900">Filters</h2>
+            </div>
+            {hasActiveFilters && (
+              <button
+                onClick={clearAllFilters}
+                className="text-sm text-gray-500 hover:text-gray-700 underline"
+              >
+                Clear all filters
+              </button>
+            )}
           </div>
 
-          <div className="flex flex-col md:flex-row gap-4">
-            <div className="flex-1 relative">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 mb-4">
+            {/* Search */}
+            <div className="relative">
               <Search className="w-5 h-5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
@@ -187,12 +288,16 @@ export default function Transactions() {
                 className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
               />
             </div>
+
+            {/* Category Filter */}
             <FilterDropdown
               options={CATEGORIES}
               value={selectedCategory}
               onChange={setSelectedCategory}
-              buttonClassName="px-4 py-2 border border-emerald-500 text-emerald-700 rounded-lg hover:bg-emerald-50 transition-colors"
+              buttonClassName="w-full px-4 py-2 border border-emerald-500 text-emerald-700 rounded-lg hover:bg-emerald-50 transition-colors"
             />
+
+            {/* Account Filter */}
             <FilterDropdown
               options={[
                 { value: 'all', label: 'All Accounts' },
@@ -200,9 +305,71 @@ export default function Transactions() {
               ]}
               value={selectedAccount}
               onChange={setSelectedAccount}
-              buttonClassName="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+              buttonClassName="w-full px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
             />
+
+            {/* Start Date */}
+            <div className="relative">
+              <Calendar className="w-5 h-5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="date"
+                placeholder="Start date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+              />
+            </div>
+
+            {/* End Date */}
+            <div className="relative">
+              <Calendar className="w-5 h-5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="date"
+                placeholder="End date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+              />
+            </div>
+
+            {/* Min Amount */}
+            <div className="relative">
+              <DollarSign className="w-5 h-5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="number"
+                placeholder="Min amount"
+                value={minAmount}
+                onChange={(e) => setMinAmount(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                step="0.01"
+                min="0"
+              />
+            </div>
+
+            {/* Max Amount */}
+            <div className="relative">
+              <DollarSign className="w-5 h-5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="number"
+                placeholder="Max amount"
+                value={maxAmount}
+                onChange={(e) => setMaxAmount(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                step="0.01"
+                min="0"
+              />
+            </div>
           </div>
+
+          {/* Loading indicator */}
+          {isLoading && (
+            <div className="flex items-center justify-center py-4">
+              <div className="flex items-center gap-2 text-blue-600">
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+                Loading transactions...
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -215,7 +382,7 @@ export default function Transactions() {
           <div className="space-y-6">
             {filteredTransactions.map(transaction => (
               <div
-                key={transaction.id}
+                key={transaction.id || transaction.transaction_id}
                 onClick={() => handleEditTransaction(transaction)}
                 className="flex items-start gap-4 p-4 hover:bg-gray-50 rounded-lg cursor-pointer transition-colors"
               >
@@ -225,11 +392,16 @@ export default function Transactions() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-start justify-between gap-4">
                     <div>
-                      <h3 className="text-lg font-medium text-gray-900">{transaction.description}</h3>
+                      <h3 className="text-lg font-medium text-gray-900">
+                        {transaction.description || transaction.name || transaction.merchant_name || 'Unknown Transaction'}
+                      </h3>
                       <div className="flex items-center gap-3 mt-1">
-                        <CategoryTag category={transaction.category} />
+                        {transaction.category && (
+                          <CategoryTag category={Array.isArray(transaction.category) ? transaction.category[0] : transaction.category} />
+                        )}
                         <span className="text-gray-600">
-                          {mockAccounts.find(acc => acc.id === transaction.account_id)?.name || 'Unknown Account'}
+                          {transaction.isPlaidConnected ? 'Connected Account' : 
+                           mockAccounts.find(acc => acc.id === transaction.account_id)?.name || 'Unknown Account'}
                         </span>
                         <span className="text-gray-600">{formatDate(transaction.date)}</span>
                       </div>
@@ -240,16 +412,16 @@ export default function Transactions() {
                     <p className={`text-lg font-semibold whitespace-nowrap ${
                       transaction.amount < 0 ? 'text-red-600' : 'text-emerald-600'
                     }`}>
-                      ${Math.abs(transaction.amount).toFixed(2)}
+                      {transaction.amount < 0 ? '-' : '+'}${Math.abs(transaction.amount).toFixed(2)}
                     </p>
                   </div>
                 </div>
               </div>
             ))}
             
-            {filteredTransactions.length === 0 && (
+            {filteredTransactions.length === 0 && !isLoading && (
               <div className="text-center py-8 text-gray-500">
-                No transactions found matching your filters
+                {hasActiveFilters ? 'No transactions found matching your filters' : 'No transactions found'}
               </div>
             )}
           </div>

@@ -1,186 +1,373 @@
-import React, { useState } from 'react';
-import { Check, Plus, Plane, Coffee, ShoppingBag, Car, Home, Utensils } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Plus, RefreshCw, Loader2, PiggyBank, TrendingUp, AlertTriangle } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
+import budgetService from '../services/budgetService';
 import BudgetModal from '../components/budgets/BudgetModal';
-
-const CATEGORY_ICONS = {
-  'Travel': { icon: Plane, bgColor: 'bg-blue-100', color: 'text-blue-600' },
-  'Coffee': { icon: Coffee, bgColor: 'bg-amber-100', color: 'text-amber-600' },
-  'Shopping': { icon: ShoppingBag, bgColor: 'bg-pink-100', color: 'text-pink-600' },
-  'Transport': { icon: Car, bgColor: 'bg-purple-100', color: 'text-purple-600' },
-  'Housing': { icon: Home, bgColor: 'bg-emerald-100', color: 'text-emerald-600' },
-  'Food': { icon: Utensils, bgColor: 'bg-orange-100', color: 'text-orange-600' },
-};
-
-const mockBudgets = [
-  {
-    id: 1,
-    category: 'Travel',
-    spent: 0,
-    budget: 20,
-    icon: Plane,
-    iconBgColor: 'bg-blue-100',
-    iconColor: 'text-blue-600'
-  }
-];
+import BudgetCard from '../components/budgets/BudgetCard';
+import BudgetCharts from '../components/budgets/BudgetCharts';
+import BudgetSuggestions from '../components/budgets/BudgetSuggestions';
 
 export default function Budgets() {
-  const [budgets, setBudgets] = useState(mockBudgets);
+  const { user } = useAuth();
+  const [budgets, setBudgets] = useState([]);
+  const [spendingSummary, setSpendingSummary] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [selectedBudget, setSelectedBudget] = useState(null);
-  
-  const currentDate = new Date();
-  const monthYear = new Intl.DateTimeFormat('en-US', { 
-    month: 'long', 
-    year: 'numeric' 
-  }).format(currentDate);
+  const [editingBudget, setEditingBudget] = useState(null);
+  const [error, setError] = useState(null);
+  const [successMessage, setSuccessMessage] = useState(null);
 
-  const calculateProgress = (spent, budget) => {
-    if (budget <= 0) return 0;
-    const progress = (spent / budget) * 100;
-    return Math.min(progress, 100).toFixed(1);
-  };
+  useEffect(() => {
+    if (user) {
+      fetchBudgets();
+      fetchSpendingSummary();
+    }
+  }, [user]);
 
-  const handleOpenModal = (budget = null) => {
-    setSelectedBudget(budget);
-    setIsModalOpen(true);
-  };
+  // Clear success message after 3 seconds
+  useEffect(() => {
+    if (successMessage) {
+      const timer = setTimeout(() => {
+        setSuccessMessage(null);
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [successMessage]);
 
-  const handleCloseModal = () => {
-    setSelectedBudget(null);
-    setIsModalOpen(false);
-  };
-
-  const handleSaveBudget = (formData) => {
-    const categoryConfig = CATEGORY_ICONS[formData.category] || {
-      icon: Check,
-      bgColor: 'bg-gray-100',
-      color: 'text-gray-600'
-    };
-
-    if (selectedBudget) {
-      // Edit existing budget
-      setBudgets(budgets.map(budget => 
-        budget.id === selectedBudget.id 
-          ? { 
-              ...budget, 
-              category: formData.category, 
-              budget: parseFloat(formData.budget),
-              icon: categoryConfig.icon,
-              iconBgColor: categoryConfig.bgColor,
-              iconColor: categoryConfig.color
-            }
-          : budget
-      ));
-    } else {
-      // Add new budget
-      const newBudget = {
-        id: Date.now(),
-        category: formData.category,
-        budget: parseFloat(formData.budget),
-        spent: 0,
-        icon: categoryConfig.icon,
-        iconBgColor: categoryConfig.bgColor,
-        iconColor: categoryConfig.color
-      };
-      setBudgets([...budgets, newBudget]);
+  const fetchBudgets = async () => {
+    try {
+      setIsLoading(true);
+      setError(null);
+      console.log("🔄 Fetching budgets...");
+      
+      const response = await budgetService.getBudgets();
+      console.log("✅ Budgets fetched:", response);
+      
+      setBudgets(response.budgets || []);
+    } catch (error) {
+      console.error("❌ Error fetching budgets:", error);
+      setError("Failed to load budgets. Please try again.");
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  return (
-    <div className="p-8 bg-gray-50 min-h-screen">
-      <div className="flex justify-between items-center mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Budget Tracker</h1>
-          <p className="text-gray-600">Set spending limits and track your progress for {monthYear}</p>
+  const fetchSpendingSummary = async () => {
+    try {
+      console.log("🔄 Fetching spending summary...");
+      
+      const response = await budgetService.getSpendingSummary();
+      console.log("✅ Spending summary fetched:", response);
+      
+      setSpendingSummary(response.summary);
+    } catch (error) {
+      console.error("❌ Error fetching spending summary:", error);
+      // Don't set error for summary, as it's not critical
+    }
+  };
+
+  const handleCreateBudget = async (budgetData) => {
+    try {
+      console.log("🚀 Creating new budget:", budgetData);
+      
+      const response = await budgetService.createBudget(budgetData);
+      console.log("✅ Budget created:", response);
+      
+      // Refresh budgets and summary
+      await fetchBudgets();
+      await fetchSpendingSummary();
+      
+      setSuccessMessage("Budget created successfully!");
+      
+      return response;
+    } catch (error) {
+      console.error("❌ Error creating budget:", error);
+      throw error;
+    }
+  };
+
+  const handleUpdateBudget = async (budgetData) => {
+    try {
+      console.log("🚀 Updating budget:", editingBudget.id, budgetData);
+      
+      const response = await budgetService.updateBudget(editingBudget.id, budgetData);
+      console.log("✅ Budget updated:", response);
+      
+      // Refresh budgets and summary
+      await fetchBudgets();
+      await fetchSpendingSummary();
+      
+      setSuccessMessage("Budget updated successfully!");
+      
+      return response;
+    } catch (error) {
+      console.error("❌ Error updating budget:", error);
+      throw error;
+    }
+  };
+
+  const handleSaveBudget = async (budgetData) => {
+    if (editingBudget) {
+      return await handleUpdateBudget(budgetData);
+    } else {
+      return await handleCreateBudget(budgetData);
+    }
+  };
+
+  // Handle applying a budget suggestion
+  const handleApplySuggestion = async (budgetData) => {
+    try {
+      console.log("🚀 Applying budget suggestion:", budgetData);
+      
+      const response = await budgetService.createBudget(budgetData);
+      console.log("✅ Budget suggestion applied:", response);
+      
+      // Refresh budgets and summary
+      await fetchBudgets();
+      await fetchSpendingSummary();
+      
+      return response;
+    } catch (error) {
+      console.error("❌ Error applying budget suggestion:", error);
+      throw error;
+    }
+  };
+
+  const handleEditBudget = (budget) => {
+    setEditingBudget(budget);
+    setIsModalOpen(true);
+  };
+
+  const handleDeleteBudget = async (budgetId) => {
+    if (!window.confirm('Are you sure you want to delete this budget?')) {
+      return;
+    }
+
+    try {
+      console.log("🗑️ Deleting budget:", budgetId);
+      
+      await budgetService.deleteBudget(budgetId);
+      console.log("✅ Budget deleted successfully");
+      
+      // Refresh budgets and summary
+      await fetchBudgets();
+      await fetchSpendingSummary();
+    } catch (error) {
+      console.error("❌ Error deleting budget:", error);
+      alert("Failed to delete budget. Please try again.");
+    }
+  };
+
+  const handleRefresh = async () => {
+    await fetchBudgets();
+    await fetchSpendingSummary();
+  };
+
+  const openCreateModal = () => {
+    setEditingBudget(null);
+    setIsModalOpen(true);
+  };
+
+  const closeModal = () => {
+    setIsModalOpen(false);
+    setEditingBudget(null);
+  };
+
+  // Calculate summary stats
+  const totalBudgets = budgets.length;
+  const overBudgetCount = budgets.filter(b => b.percentage_used >= 100).length;
+  const nearLimitCount = budgets.filter(b => b.percentage_used >= 80 && b.percentage_used < 100).length;
+
+  if (isLoading && budgets.length === 0) {
+    return (
+      <div className="p-8">
+        <div className="flex items-center justify-center py-12">
+          <div className="flex items-center gap-3 text-blue-600">
+            <Loader2 className="w-6 h-6 animate-spin" />
+            <span>Loading budgets...</span>
+          </div>
         </div>
-        <button 
-          onClick={() => handleOpenModal()}
-          className="bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors font-medium"
-        >
-          <Plus className="w-5 h-5" />
-          Add Budget
-        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-8">
+      {/* Header */}
+      <div className="mb-8">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center">
+              <PiggyBank className="w-6 h-6 text-blue-600" />
+            </div>
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900">Budget Planning</h1>
+              <p className="text-gray-600 mt-1">Set and track your monthly spending limits</p>
+            </div>
+          </div>
+          
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handleRefresh}
+              disabled={isLoading}
+              className="flex items-center gap-2 px-4 py-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50"
+            >
+              <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+              Refresh
+            </button>
+            <button
+              onClick={openCreateModal}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              <Plus className="w-4 h-4" />
+              New Budget
+            </button>
+          </div>
+        </div>
+
+        {/* Error Message */}
+        {error && (
+          <div className="p-4 bg-red-50 border border-red-200 rounded-lg mb-6">
+            <p className="text-red-800">{error}</p>
+          </div>
+        )}
+
+        {/* Success Message */}
+        {successMessage && (
+          <div className="p-4 bg-green-50 border border-green-200 rounded-lg mb-6">
+            <p className="text-green-800">{successMessage}</p>
+          </div>
+        )}
+
+        {/* Summary Cards */}
+        {spendingSummary && (
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+            <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                  <PiggyBank className="w-5 h-5 text-blue-600" />
+                </div>
+                <div>
+                  <p className="text-sm text-gray-600">Total Budget</p>
+                  <p className="text-xl font-bold text-gray-900">
+                    ${spendingSummary.total_budget.toFixed(0)}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center">
+                  <TrendingUp className="w-5 h-5 text-red-600" />
+                </div>
+                <div>
+                  <p className="text-sm text-gray-600">Total Spent</p>
+                  <p className="text-xl font-bold text-red-600">
+                    ${spendingSummary.total_spent.toFixed(0)}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
+                  <TrendingUp className="w-5 h-5 text-green-600" />
+                </div>
+                <div>
+                  <p className="text-sm text-gray-600">Remaining</p>
+                  <p className={`text-xl font-bold ${
+                    spendingSummary.total_remaining < 0 ? 'text-red-600' : 'text-green-600'
+                  }`}>
+                    ${spendingSummary.total_remaining.toFixed(0)}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-yellow-100 rounded-lg flex items-center justify-center">
+                  <AlertTriangle className="w-5 h-5 text-yellow-600" />
+                </div>
+                <div>
+                  <p className="text-sm text-gray-600">Over Budget</p>
+                  <p className="text-xl font-bold text-yellow-600">
+                    {overBudgetCount} of {totalBudgets}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {budgets.map((budget) => (
-          <div 
-            key={budget.id} 
-            onClick={() => handleOpenModal(budget)}
-            className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 hover:shadow-md transition-shadow cursor-pointer"
-          >
-            <div className="flex items-center gap-3 mb-6">
-              <div className={`w-10 h-10 ${budget.iconBgColor} rounded-xl flex items-center justify-center`}>
-                <budget.icon className={`w-5 h-5 ${budget.iconColor}`} />
-              </div>
-              <h2 className="text-lg font-semibold text-gray-900">{budget.category}</h2>
-            </div>
-
-            <div className="mb-4">
-              <div className="flex justify-between items-center mb-2">
-                <span className="text-sm text-gray-600">Progress</span>
-                <span className={`text-sm font-medium ${
-                  parseFloat(calculateProgress(budget.spent, budget.budget)) >= 100 
-                    ? 'text-red-600' 
-                    : 'text-emerald-600'
-                }`}>
-                  {calculateProgress(budget.spent, budget.budget)}%
-                </span>
-              </div>
-              <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                <div 
-                  className={`h-full rounded-full transition-all duration-500 ${
-                    parseFloat(calculateProgress(budget.spent, budget.budget)) >= 100 
-                      ? 'bg-red-500' 
-                      : 'bg-emerald-500'
-                  }`}
-                  style={{ width: `${calculateProgress(budget.spent, budget.budget)}%` }}
-                />
-              </div>
-            </div>
-
-            <div className="flex justify-between items-baseline mb-4">
-              <div>
-                <p className="text-sm text-gray-600">Spent</p>
-                <p className={`text-xl font-semibold ${
-                  budget.spent > budget.budget ? 'text-red-600' : 'text-emerald-600'
-                }`}>
-                  ${budget.spent.toFixed(2)}
-                </p>
-              </div>
-              <div className="text-right">
-                <p className="text-sm text-gray-600">Budget</p>
-                <p className="text-xl font-semibold text-gray-900">${budget.budget.toFixed(2)}</p>
-              </div>
-            </div>
-
-            <p className="text-sm text-gray-600">
-              Remaining: ${Math.max(budget.budget - budget.spent, 0).toFixed(2)}
-            </p>
-          </div>
-        ))}
-
-        {/* Add Budget Card */}
-        <button 
-          onClick={() => handleOpenModal()}
-          className="bg-gray-50 rounded-xl border-2 border-gray-200 border-dashed p-6 flex flex-col items-center justify-center gap-3 hover:bg-gray-100 transition-colors cursor-pointer min-h-[250px] group"
-        >
-          <div className="w-10 h-10 bg-gray-100 rounded-xl flex items-center justify-center group-hover:bg-gray-200 transition-colors">
-            <Plus className="w-5 h-5 text-gray-600" />
-          </div>
-          <p className="text-gray-600 font-medium">Add New Budget</p>
-          <p className="text-sm text-gray-500 text-center">
-            Create a new budget to track your spending
-          </p>
-        </button>
+      {/* Charts Section */}
+      <div className="mb-8">
+        <BudgetCharts budgets={budgets} spendingSummary={spendingSummary} />
       </div>
 
+      {/* Smart Budget Suggestions */}
+      <div className="mb-8">
+        <BudgetSuggestions onApplySuggestion={handleApplySuggestion} />
+      </div>
+
+      {/* Budgets List */}
+      <div className="mb-8">
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-xl font-semibold text-gray-900">
+            Your Budgets ({budgets.length})
+          </h2>
+          {nearLimitCount > 0 && (
+            <div className="flex items-center gap-2 text-yellow-600">
+              <AlertTriangle className="w-4 h-4" />
+              <span className="text-sm font-medium">
+                {nearLimitCount} budget{nearLimitCount > 1 ? 's' : ''} near limit
+              </span>
+            </div>
+          )}
+        </div>
+
+        {budgets.length === 0 ? (
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-12">
+            <div className="text-center">
+              <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <PiggyBank className="w-8 h-8 text-gray-400" />
+              </div>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">No Budgets Yet</h3>
+              <p className="text-gray-600 mb-6">
+                Create your first budget to start tracking your spending and stay on top of your finances.
+              </p>
+              <button
+                onClick={openCreateModal}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                <Plus className="w-4 h-4" />
+                Create Your First Budget
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {budgets.map((budget) => (
+              <BudgetCard
+                key={budget.id}
+                budget={budget}
+                onEdit={handleEditBudget}
+                onDelete={handleDeleteBudget}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Budget Modal */}
       <BudgetModal
         isOpen={isModalOpen}
-        onClose={handleCloseModal}
+        onClose={closeModal}
+        budget={editingBudget}
         onSave={handleSaveBudget}
-        budget={selectedBudget}
-        categories={Object.keys(CATEGORY_ICONS)}
       />
     </div>
   );

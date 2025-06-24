@@ -98,11 +98,41 @@ class PlaidService {
     }
   }
 
-  // Get transactions from Plaid
-  async getTransactions(accessToken, startDate = null, endDate = null, count = 100) {
+  // Get accounts from Plaid
+  async getAccounts() {
+    try {
+      console.log("🌐 Making request to:", `${this.baseURL}/api/v1/plaid/accounts`);
+      
+      const token = await this.getAuthToken();
+      if (!token) {
+        throw new Error('No authentication token found - user must be signed in');
+      }
+
+      const response = await axios.get(`${this.baseURL}/api/v1/plaid/accounts`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      console.log("📡 Response status:", response.status);
+      console.log("📦 Full response data:", response.data);
+      console.log("🏦 Account count:", response.data.accounts?.length || 0);
+
+      return response.data;
+    } catch (error) {
+      console.error('❌ Error fetching accounts:', error);
+      console.error('❌ Error response data:', error.response?.data);
+      console.error('❌ Error status:', error.response?.status);
+      console.error('❌ Error message:', error.message);
+      throw error;
+    }
+  }
+
+  // Get transactions from Plaid (updated to use stored access token)
+  async getTransactions(startDate = null, endDate = null, count = 100) {
     try {
       console.log("🌐 Making request to:", `${this.baseURL}/api/v1/plaid/transactions`);
-      console.log("🔑 Access token:", accessToken);
       console.log("📅 Date range:", { startDate, endDate, count });
       
       const token = await this.getAuthToken();
@@ -111,7 +141,6 @@ class PlaidService {
       }
 
       const params = new URLSearchParams({
-        access_token: accessToken,
         count: count.toString()
       });
       
@@ -129,7 +158,6 @@ class PlaidService {
       });
 
       console.log("📡 Response status:", response.status);
-      console.log("📡 Response headers:", response.headers);
       console.log("📦 Full response data:", response.data);
       console.log("💰 Transaction count:", response.data.transactions?.length || 0);
 

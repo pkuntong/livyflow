@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, CreditCard, PiggyBank, LineChart, Wallet } from 'lucide-react';
+import { Plus, CreditCard, PiggyBank, LineChart, Wallet, RefreshCw, ChevronDown, ChevronUp, Receipt, Calendar } from 'lucide-react';
 import AccountModal from '../components/accounts/AccountModal';
 import ConnectBankAccount from '../components/ConnectBankAccount';
 import TestPlaidIntegration from '../components/TestPlaidIntegration';
@@ -38,56 +38,76 @@ const initialAccounts = [
     id: 1,
     name: 'Main Checking',
     institution: 'Chase Bank',
-    type: 'CHECKING',
+    type: 'depository',
+    subtype: 'checking',
     balance: 5420.50,
     icon: Wallet,
     iconBgColor: 'bg-blue-100',
     iconColor: 'text-blue-600',
-    tag: 'checking'
+    tag: 'checking',
+    isPlaidConnected: false,
+    accountId: 'manual-1',
+    mask: '1234'
   },
   {
     id: 2,
     name: 'Emergency Savings',
     institution: 'Chase Bank',
-    type: 'SAVINGS',
+    type: 'depository',
+    subtype: 'savings',
     balance: 12000.00,
     icon: PiggyBank,
     iconBgColor: 'bg-emerald-100',
     iconColor: 'text-emerald-600',
-    tag: 'savings'
+    tag: 'savings',
+    isPlaidConnected: false,
+    accountId: 'manual-2',
+    mask: '5678'
   },
   {
     id: 3,
     name: 'Chase Freedom',
     institution: 'Chase Bank',
-    type: 'CREDIT CARD',
+    type: 'credit',
+    subtype: 'credit card',
     balance: -1250.30,
     icon: CreditCard,
     iconBgColor: 'bg-red-100',
     iconColor: 'text-red-600',
-    tag: 'credit card'
+    tag: 'credit card',
+    isPlaidConnected: false,
+    accountId: 'manual-3',
+    mask: '9012'
   },
   {
     id: 4,
     name: 'Investment Portfolio',
     institution: 'Fidelity',
-    type: 'INVESTMENT',
+    type: 'investment',
+    subtype: 'investment',
     balance: 8500.75,
     icon: LineChart,
     iconBgColor: 'bg-purple-100',
     iconColor: 'text-purple-600',
-    tag: 'investment'
+    tag: 'investment',
+    isPlaidConnected: false,
+    accountId: 'manual-4',
+    mask: '3456'
   },
   {
     id: 5,
     name: 'Olivia Kuntong',
     institution: 'Chase',
-    type: 'CHECKING',
+    type: 'depository',
+    subtype: 'checking',
     balance: 20000000.00,
     icon: Wallet,
     iconBgColor: 'bg-blue-100',
     iconColor: 'text-blue-600',
-    tag: 'checking'
+    tag: 'checking',
+    isPlaidConnected: false,
+    accountId: 'manual-5',
+    mask: '7890'
   }
 ];
 
@@ -101,41 +121,214 @@ function formatCurrency(amount) {
 }
 
 function AccountCard({ account }) {
+  const { user } = useAuth();
+  const [showTransactions, setShowTransactions] = useState(false);
+  const [recentTransactions, setRecentTransactions] = useState([]);
+  const [loadingTransactions, setLoadingTransactions] = useState(false);
   const isNegative = account.balance < 0;
-  
+
+  const fetchRecentTransactions = async () => {
+    if (!user || !account.accountId || !account.isPlaidConnected) {
+      return;
+    }
+
+    try {
+      setLoadingTransactions(true);
+      
+      // Fetch transactions for the last 30 days
+      const endDate = new Date();
+      const startDate = new Date();
+      startDate.setDate(startDate.getDate() - 30);
+
+      const startDateStr = startDate.toISOString().split('T')[0];
+      const endDateStr = endDate.toISOString().split('T')[0];
+
+      const response = await plaidService.getTransactions(startDateStr, endDateStr, 100);
+      const allTransactions = response.transactions || [];
+
+      // Filter transactions for this specific account
+      const accountTransactions = allTransactions.filter(transaction => 
+        transaction.account_id === account.accountId
+      ).slice(0, 5); // Get only the 5 most recent
+
+      setRecentTransactions(accountTransactions);
+    } catch (error) {
+      console.error("❌ Error fetching recent transactions:", error);
+    } finally {
+      setLoadingTransactions(false);
+    }
+  };
+
+  const handleToggleTransactions = () => {
+    if (!showTransactions && account.isPlaidConnected) {
+      fetchRecentTransactions();
+    }
+    setShowTransactions(!showTransactions);
+  };
+
+  const formatDate = (dateString) => {
+    return new Date(dateString).toLocaleDateString('en-US', { 
+      month: 'short', 
+      day: 'numeric' 
+    });
+  };
+
+  const getAccountTypeDisplay = (type, subtype) => {
+    if (type === 'credit') return 'Credit Card';
+    if (type === 'depository') {
+      if (subtype === 'checking') return 'Checking';
+      if (subtype === 'savings') return 'Savings';
+      return 'Depository';
+    }
+    if (type === 'loan') return 'Loan';
+    if (type === 'investment') return 'Investment';
+    return type.charAt(0).toUpperCase() + type.slice(1);
+  };
+
+  const getAccountIcon = (type, subtype) => {
+    if (type === 'credit') return CreditCard;
+    if (type === 'depository') {
+      if (subtype === 'checking') return Wallet;
+      if (subtype === 'savings') return PiggyBank;
+      return Wallet;
+    }
+    if (type === 'investment') return LineChart;
+    return Wallet;
+  };
+
+  const getAccountIconConfig = (type, subtype) => {
+    if (type === 'credit') {
+      return { bgColor: 'bg-red-100', color: 'text-red-600' };
+    }
+    if (type === 'depository') {
+      if (subtype === 'checking') {
+        return { bgColor: 'bg-blue-100', color: 'text-blue-600' };
+      }
+      if (subtype === 'savings') {
+        return { bgColor: 'bg-emerald-100', color: 'text-emerald-600' };
+      }
+      return { bgColor: 'bg-blue-100', color: 'text-blue-600' };
+    }
+    if (type === 'investment') {
+      return { bgColor: 'bg-purple-100', color: 'text-purple-600' };
+    }
+    return { bgColor: 'bg-gray-100', color: 'text-gray-600' };
+  };
+
+  const IconComponent = getAccountIcon(account.type, account.subtype);
+  const iconConfig = getAccountIconConfig(account.type, account.subtype);
+  const accountTypeDisplay = getAccountTypeDisplay(account.type, account.subtype);
+
   return (
-    <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100">
-      <div className="flex items-center gap-3 mb-6">
-        <div className={`w-10 h-10 ${account.iconBgColor} rounded-xl flex items-center justify-center`}>
-          <account.icon className={`w-5 h-5 ${account.iconColor}`} />
-        </div>
-        <div className="flex-1">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-gray-900">{account.name}</h2>
-            <span className={`text-sm px-3 py-1 rounded-full ${
-              account.tag === 'checking' ? 'bg-blue-50 text-blue-700' :
-              account.tag === 'savings' ? 'bg-emerald-50 text-emerald-700' :
-              account.tag === 'credit card' ? 'bg-red-50 text-red-700' :
-              'bg-purple-50 text-purple-700'
-            }`}>
-              {account.tag}
-            </span>
+    <div className="bg-white rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
+      <div className="p-6">
+        <div className="flex items-center gap-3 mb-6">
+          <div className={`w-12 h-12 ${iconConfig.bgColor} rounded-xl flex items-center justify-center`}>
+            <IconComponent className={`w-6 h-6 ${iconConfig.color}`} />
           </div>
-          <p className="text-gray-600">{account.institution}</p>
+          <div className="flex-1">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-gray-900">{account.name}</h2>
+              <span className={`text-xs px-2 py-1 rounded-full ${
+                account.type === 'credit' ? 'bg-red-50 text-red-700' :
+                account.subtype === 'checking' ? 'bg-blue-50 text-blue-700' :
+                account.subtype === 'savings' ? 'bg-emerald-50 text-emerald-700' :
+                account.type === 'investment' ? 'bg-purple-50 text-purple-700' :
+                'bg-gray-50 text-gray-700'
+              }`}>
+                {accountTypeDisplay}
+              </span>
+            </div>
+            <p className="text-sm text-gray-600">{account.institution}</p>
+            {account.mask && (
+              <p className="text-xs text-gray-500">•••• {account.mask}</p>
+            )}
+          </div>
         </div>
+
+        <div className="space-y-4">
+          <div>
+            <p className="text-sm text-gray-600">Current Balance</p>
+            <p className={`text-2xl font-semibold ${isNegative ? 'text-red-600' : 'text-emerald-600'}`}>
+              {formatCurrency(account.balance)}
+            </p>
+          </div>
+          
+          <div className="flex items-center justify-between text-sm text-gray-600">
+            <span>Account Type: {accountTypeDisplay}</span>
+            {account.isPlaidConnected && (
+              <span className="text-green-600 font-medium">Connected</span>
+            )}
+          </div>
+        </div>
+
+        {/* Recent Transactions Toggle */}
+        {account.isPlaidConnected && (
+          <div className="mt-6 pt-4 border-t border-gray-100">
+            <button
+              onClick={handleToggleTransactions}
+              className="w-full flex items-center justify-between text-sm font-medium text-gray-700 hover:text-gray-900 transition-colors"
+            >
+              <span className="flex items-center gap-2">
+                <Receipt className="w-4 h-4" />
+                Recent Transactions
+              </span>
+              {showTransactions ? (
+                <ChevronUp className="w-4 h-4" />
+              ) : (
+                <ChevronDown className="w-4 h-4" />
+              )}
+            </button>
+          </div>
+        )}
       </div>
 
-      <div className="space-y-4">
-        <div>
-          <p className="text-sm text-gray-600">Current Balance</p>
-          <p className={`text-2xl font-semibold ${isNegative ? 'text-red-600' : 'text-emerald-600'}`}>
-            {formatCurrency(account.balance)}
-          </p>
+      {/* Recent Transactions Section */}
+      {showTransactions && account.isPlaidConnected && (
+        <div className="px-6 pb-6 border-t border-gray-100">
+          {loadingTransactions ? (
+            <div className="flex items-center justify-center py-4">
+              <div className="flex items-center gap-2 text-blue-600">
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+                Loading transactions...
+              </div>
+            </div>
+          ) : recentTransactions.length > 0 ? (
+            <div className="space-y-3 mt-4">
+              <h4 className="text-sm font-medium text-gray-900 mb-3">Last 5 Transactions</h4>
+              {recentTransactions.map((transaction, index) => (
+                <div key={transaction.transaction_id || index} className="flex items-center justify-between py-2">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center">
+                      <Receipt className="w-4 h-4 text-gray-600" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-gray-900">
+                        {transaction.name || transaction.merchant_name || 'Unknown Transaction'}
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <Calendar className="w-3 h-3 text-gray-400" />
+                        <span className="text-xs text-gray-500">
+                          {formatDate(transaction.date)}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className={`text-sm font-medium ${transaction.amount < 0 ? 'text-red-600' : 'text-green-600'}`}>
+                      {transaction.amount < 0 ? '-' : '+'}{formatCurrency(Math.abs(transaction.amount))}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-4 text-gray-500">
+              <p className="text-sm">No recent transactions</p>
+            </div>
+          )}
         </div>
-        <p className="text-sm text-gray-600">
-          Account Type: {account.type}
-        </p>
-      </div>
+      )}
     </div>
   );
 }
@@ -143,11 +336,26 @@ function AccountCard({ account }) {
 export default function Accounts() {
   const { user } = useAuth();
   const [accounts, setAccounts] = useState(initialAccounts);
+  const [plaidAccounts, setPlaidAccounts] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [showPlaidConnect, setShowPlaidConnect] = useState(false);
   const [linkToken, setLinkToken] = useState(null);
   const [plaidLoading, setPlaidLoading] = useState(false);
+  const [plaidAccountsLoading, setPlaidAccountsLoading] = useState(false);
+  const [plaidAccountsError, setPlaidAccountsError] = useState(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const totalBalance = accounts.reduce((sum, account) => sum + account.balance, 0);
+
+  // Fetch Plaid accounts when user is authenticated
+  useEffect(() => {
+    if (!user) {
+      console.log("🔒 User not authenticated, skipping Plaid accounts fetch");
+      setPlaidAccounts([]);
+      return;
+    }
+
+    fetchPlaidAccounts();
+  }, [user]);
 
   // Test Plaid link token fetch on component mount only if user is signed in
   useEffect(() => {
@@ -185,38 +393,125 @@ export default function Accounts() {
   }, [user]);
 
   const handleAddAccount = (newAccount) => {
-    const config = ACCOUNT_CONFIGS[newAccount.type];
-    const accountWithConfig = {
+    const accountWithId = {
       ...newAccount,
-      ...config,
-      tag: config.tag
+      id: Date.now(),
+      isPlaidConnected: false,
+      accountId: `manual-${Date.now()}`,
+      mask: Math.floor(Math.random() * 9000) + 1000, // Random 4-digit mask
+      type: newAccount.type?.toLowerCase() || 'depository',
+      subtype: newAccount.type?.toLowerCase() || 'checking'
     };
-    setAccounts([...accounts, accountWithConfig]);
+    
+    setAccounts(prev => [...prev, accountWithId]);
+    setIsModalOpen(false);
   };
 
   const handlePlaidSuccess = (result, metadata) => {
-    console.log("🎉 Accounts: Plaid connection successful!");
-    console.log("📊 Full result:", result);
-    console.log("🔍 Full metadata:", metadata);
+    console.log("✅ Plaid connection successful:", result);
+    console.log("📋 Metadata:", metadata);
     
-    // Add the connected account to the list
+    // Create a new account entry for the connected bank
     const newAccount = {
-      id: Date.now(), // Generate unique ID
-      name: metadata.institution?.name || 'Connected Account',
-      institution: metadata.institution?.name || 'Unknown Bank',
-      type: 'CHECKING', // Default type
-      balance: 0, // Will be updated with real data
+      id: Date.now(),
+      name: metadata.institution?.name || 'Connected Bank Account',
+      institution: metadata.institution?.name || 'Connected Bank',
+      type: 'depository',
+      subtype: 'checking',
+      balance: 0, // Will be updated when accounts are fetched
       icon: Wallet,
       iconBgColor: 'bg-blue-100',
       iconColor: 'text-blue-600',
       tag: 'checking',
       isPlaidConnected: true,
+      accountId: `plaid-${Date.now()}`,
+      mask: '****',
       accessToken: result.access_token,
       itemId: result.item_id
     };
     
     setAccounts(prev => [...prev, newAccount]);
     setShowPlaidConnect(false);
+  };
+
+  // Function to fetch Plaid accounts
+  const fetchPlaidAccounts = async () => {
+    try {
+      setPlaidAccountsLoading(true);
+      setPlaidAccountsError(null);
+      console.log("🔄 Fetching Plaid accounts...");
+      
+      const response = await plaidService.getAccounts();
+      console.log("✅ Plaid accounts fetched:", response);
+      
+      // Transform Plaid accounts to match our account format
+      const transformedAccounts = response.accounts.map((account, index) => {
+        const accountType = account.type?.toUpperCase() || 'CHECKING';
+        const config = ACCOUNT_CONFIGS[accountType] || ACCOUNT_CONFIGS['CHECKING'];
+        
+        return {
+          id: `plaid-${account.account_id}`,
+          name: account.name,
+          institution: 'Connected Bank',
+          type: account.type || 'depository',
+          subtype: account.subtype || 'checking',
+          balance: account.balances.current || 0,
+          icon: config.icon,
+          iconBgColor: config.iconBgColor,
+          iconColor: config.iconColor,
+          tag: config.tag,
+          isPlaidConnected: true,
+          accountId: account.account_id,
+          mask: account.mask,
+          accountNumber: account.account_id
+        };
+      });
+      
+      setPlaidAccounts(transformedAccounts);
+      console.log("✅ Transformed Plaid accounts:", transformedAccounts);
+    } catch (error) {
+      console.error("❌ Error fetching Plaid accounts:", error);
+      
+      // Handle specific error cases
+      if (error.response?.status === 400) {
+        // No bank account connected
+        setPlaidAccountsError("No bank account connected. Please connect your bank account first.");
+        setPlaidAccounts([]);
+      } else if (error.response?.status === 401) {
+        // Authentication error
+        setPlaidAccountsError("Authentication failed. Please sign in again.");
+        setPlaidAccounts([]);
+      } else if (error.response?.status === 403) {
+        // Forbidden
+        setPlaidAccountsError("Access denied. Please check your permissions.");
+        setPlaidAccounts([]);
+      } else {
+        // Generic error
+        setPlaidAccountsError(error.message || "Failed to fetch bank accounts");
+        setPlaidAccounts([]);
+      }
+    } finally {
+      setPlaidAccountsLoading(false);
+    }
+  };
+
+  // Manual refresh function
+  const handleRefresh = async () => {
+    if (!user) {
+      console.log("🔒 User not authenticated, cannot refresh");
+      return;
+    }
+
+    setIsRefreshing(true);
+    try {
+      console.log("🔄 Manual refresh started...");
+      await fetchPlaidAccounts();
+      console.log("✅ Manual refresh completed");
+    } catch (error) {
+      console.error("❌ Manual refresh failed:", error);
+    } finally {
+      setIsRefreshing(false);
+    }
   };
 
   return (
@@ -268,10 +563,81 @@ export default function Accounts() {
         <TestPlaidIntegration />
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {accounts.map(account => (
-          <AccountCard key={account.id} account={account} />
-        ))}
+      {/* Plaid Accounts Section */}
+      {user && (
+        <div className="mb-8">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-semibold text-gray-900">Connected Bank Accounts</h2>
+            <div className="flex items-center gap-2">
+              {plaidAccountsLoading && (
+                <div className="flex items-center gap-2 text-blue-600">
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+                  Loading accounts...
+                </div>
+              )}
+              <button
+                onClick={handleRefresh}
+                disabled={isRefreshing || plaidAccountsLoading}
+                className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+                {isRefreshing ? 'Refreshing...' : 'Refresh'}
+              </button>
+            </div>
+          </div>
+          
+          {plaidAccounts.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-6">
+              {plaidAccounts.map(account => (
+                <AccountCard key={account.id} account={account} />
+              ))}
+            </div>
+          ) : !plaidAccountsLoading && !plaidAccountsError && (
+            <div className="mb-6 p-6 bg-blue-50 border border-blue-200 rounded-lg text-center">
+              <div className="mb-4">
+                <CreditCard className="w-12 h-12 text-blue-500 mx-auto" />
+              </div>
+              <h3 className="text-lg font-semibold text-blue-900 mb-2">Connect Your Bank Account</h3>
+              <p className="text-blue-700 mb-4">Connect your bank account to see your real-time balances and transactions.</p>
+              <button
+                onClick={() => setShowPlaidConnect(true)}
+                className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-2 rounded-lg transition-colors font-medium"
+              >
+                Connect Bank Account
+              </button>
+            </div>
+          )}
+          
+          {plaidAccountsError && (
+            <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+              <div className="flex items-start gap-3">
+                <div className="flex-shrink-0">
+                  <CreditCard className="w-5 h-5 text-red-500 mt-0.5" />
+                </div>
+                <div className="flex-1">
+                  <p className="text-red-800 font-medium mb-1">Connection Required</p>
+                  <p className="text-red-700 text-sm mb-3">{plaidAccountsError}</p>
+                  <button
+                    onClick={() => setShowPlaidConnect(true)}
+                    className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded text-sm transition-colors"
+                  >
+                    Connect Bank Account
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Manual Accounts Section */}
+      <div className="mb-8">
+        <h2 className="text-xl font-semibold text-gray-900 mb-4">Manual Accounts</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {accounts.map(account => (
+            <AccountCard key={account.id} account={account} />
+          ))}
+        </div>
       </div>
 
       {/* Plaid Connect Modal */}

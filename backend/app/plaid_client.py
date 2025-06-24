@@ -6,6 +6,7 @@ from plaid.model.country_code import CountryCode
 from plaid.model.item_public_token_exchange_request import ItemPublicTokenExchangeRequest
 from plaid.model.transactions_get_request import TransactionsGetRequest
 from plaid.model.transactions_get_request_options import TransactionsGetRequestOptions
+from plaid.model.accounts_get_request import AccountsGetRequest
 from plaid.configuration import Configuration
 from datetime import datetime, timedelta
 import logging
@@ -13,6 +14,28 @@ from app.config import settings
 
 # Configure logging
 logger = logging.getLogger(__name__)
+
+# Simple in-memory storage for access tokens (for development)
+# In production, this should be replaced with a proper database
+access_token_storage = {}
+
+def store_access_token(user_id: str, access_token: str, item_id: str):
+    """Store access token for a user (in-memory for development)."""
+    access_token_storage[user_id] = {
+        'access_token': access_token,
+        'item_id': item_id,
+        'stored_at': datetime.now().isoformat()
+    }
+    logger.info(f"💾 Access token stored for user: {user_id}")
+
+def get_access_token_for_user(user_id: str):
+    """Get access token for a user (from in-memory storage for development)."""
+    if user_id not in access_token_storage:
+        return None
+    
+    stored_data = access_token_storage[user_id]
+    logger.info(f"🔑 Retrieved access token for user: {user_id}")
+    return stored_data['access_token']
 
 def get_plaid_client():
     """Initialize and return a Plaid client with configuration from environment variables."""
@@ -101,7 +124,7 @@ def exchange_public_token(public_token: str, user_id: str):
     logger.info(f"   - Public token: {request.public_token[:20]}...")
     
     logger.info("🌐 Making Plaid API call: item_public_token_exchange")
-    response = client.plaid_item_public_token_exchange(request)
+    response = client.item_public_token_exchange(request)
     
     logger.info("✅ Public token exchanged successfully")
     logger.info(f"🔑 Access token: {response.access_token[:20]}...")
@@ -110,6 +133,42 @@ def exchange_public_token(public_token: str, user_id: str):
     # In a real application, you would store the access_token and item_id
     # in your database associated with the user_id
     logger.info("💾 Ready to save access token to database")
+    
+    store_access_token(user_id, response.access_token, response.item_id)
+    
+    return response
+
+def get_accounts(access_token: str):
+    """Get bank accounts from Plaid using the access token."""
+    logger.info("🔄 Fetching accounts from Plaid")
+    logger.info(f"🔑 Access token: {access_token[:20]}...")
+    
+    client = get_plaid_client()
+    
+    request = AccountsGetRequest(
+        access_token=access_token
+    )
+    
+    logger.info("📤 Accounts request details:")
+    logger.info(f"   - Access token: {request.access_token[:20]}...")
+    
+    logger.info("🌐 Making Plaid API call: accounts_get")
+    response = client.accounts_get(request)
+    
+    logger.info("✅ Accounts fetched successfully")
+    logger.info(f"🏦 Account count: {len(response.accounts)}")
+    logger.info(f"🆔 Item ID: {response.item.item_id}")
+    logger.info(f"🏛️ Institution: {response.item.institution_id}")
+    
+    # Log sample account details
+    if response.accounts:
+        sample_account = response.accounts[0]
+        logger.info("📋 Sample account:")
+        logger.info(f"   - Name: {sample_account.name}")
+        logger.info(f"   - Type: {sample_account.type}")
+        logger.info(f"   - Subtype: {sample_account.subtype}")
+        logger.info(f"   - Mask: {sample_account.mask}")
+        logger.info(f"   - Balance: {sample_account.balances.current}")
     
     return response
 
@@ -148,7 +207,7 @@ def get_transactions(access_token: str, start_date: str = None, end_date: str = 
     logger.info(f"   - Include categories: {request.options.include_personal_finance_category}")
     
     logger.info("🌐 Making Plaid API call: transactions_get")
-    response = client.plaid_transactions_get(request)
+    response = client.transactions_get(request)
     
     logger.info("✅ Transactions fetched successfully")
     logger.info(f"💰 Transaction count: {len(response.transactions)}")
