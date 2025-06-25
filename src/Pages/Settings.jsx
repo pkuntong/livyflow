@@ -2,11 +2,13 @@ import React, { useState } from 'react';
 import AlertSettings from '../components/AlertSettings';
 import AlertHistory from '../components/AlertHistory';
 import EmailPreferences from '../components/EmailPreferences';
+import AccountManagement from '../components/AccountManagement';
 
 const Settings = () => {
-  const [activeTab, setActiveTab] = useState('alerts');
+  const [activeTab, setActiveTab] = useState('account');
 
   const tabs = [
+    { id: 'account', name: 'Account', icon: '👤' },
     { id: 'alerts', name: 'Alert Settings', icon: '🔔' },
     { id: 'history', name: 'Alert History', icon: '📋' },
     { id: 'email', name: 'Email Notifications', icon: '📧' }
@@ -41,6 +43,7 @@ const Settings = () => {
 
       {/* Tab Content */}
       <div className="space-y-8">
+        {activeTab === 'account' && <AccountManagement />}
         {activeTab === 'alerts' && <AlertSettings />}
         {activeTab === 'history' && <AlertHistory />}
         {activeTab === 'email' && <EmailPreferences />}

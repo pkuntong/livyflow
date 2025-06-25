@@ -30,7 +30,7 @@ export default function Layout() {
       
       {/* Sidebar */}
       <aside className="sidebar">
-        <div className="logo-section flex items-center gap-3">
+        <Link to="/" className="logo-section flex items-center gap-3">
           <div className="w-12 h-12 bg-emerald-100 rounded-xl flex items-center justify-center">
             <PiggyBank className="w-6 h-6 text-emerald-600" />
           </div>
@@ -38,7 +38,7 @@ export default function Layout() {
             <h1 className="font-semibold text-gray-900">LivyFlow</h1>
             <p className="text-sm text-gray-500">Personal Finance</p>
           </div>
-        </div>
+        </Link>
 
         <nav className="mt-8">
           <Link to="/app/dashboard" className={`nav-item ${isActive('/app/dashboard') ? 'active' : ''}`}>
@@ -78,7 +78,7 @@ export default function Layout() {
             </div>
             <div>
               <p className="font-medium text-gray-900">Your Account</p>
-              <p className="text-sm text-gray-500">{currentUser?.email}</p>
+              <p className="text-sm text-gray-500">{currentUser?.displayName || 'User'}</p>
             </div>
           </div>
           <button
