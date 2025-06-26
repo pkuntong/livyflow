@@ -8,6 +8,7 @@ from plaid.model.transactions_get_request import TransactionsGetRequest
 from plaid.model.transactions_get_request_options import TransactionsGetRequestOptions
 from plaid.model.accounts_get_request import AccountsGetRequest
 from plaid.configuration import Configuration
+from plaid import Environment
 from datetime import datetime, timedelta
 import logging
 from app.config import settings
@@ -40,7 +41,24 @@ def get_access_token_for_user(user_id: str):
 def get_plaid_client():
     """Initialize and return a Plaid client with configuration from environment variables."""
     logger.info("🔧 Initializing Plaid client")
-    logger.info(f"🌍 Environment: {settings.PLAID_ENV}")
+    
+    # Dynamically load the PLAID_ENV variable
+    environment = settings.PLAID_ENV.lower()
+    logger.info(f"🌍 Environment from config: {environment}")
+    
+    # Map environment to Plaid Environment enum
+    if environment == "production":
+        plaid_env = Environment.Production
+    elif environment == "development":
+        plaid_env = Environment.Development
+    else:
+        plaid_env = Environment.Sandbox
+    
+    # Safety log to confirm the environment
+    logger.info(f"🔒 [Plaid] Running in: {plaid_env}")
+    
+    # Console log to confirm environment and credentials (as requested)
+    print(f"[Plaid] ENV={environment} | CLIENT_ID={settings.PLAID_CLIENT_ID[:6]}... | SECRET={settings.PLAID_SECRET[:6]}...")
     
     # Check if required environment variables are set
     if not settings.PLAID_CLIENT_ID:
@@ -55,18 +73,8 @@ def get_plaid_client():
     
     logger.info(f"🆔 Client ID: {settings.PLAID_CLIENT_ID[:10]}...")
     
-    # Map environment to correct Plaid host URL
-    host_mapping = {
-        'sandbox': 'https://sandbox.plaid.com',
-        'development': 'https://development.plaid.com',
-        'production': 'https://production.plaid.com'
-    }
-    
-    host_url = host_mapping.get(settings.PLAID_ENV, 'https://sandbox.plaid.com')
-    logger.info(f"🌐 Using Plaid host: {host_url}")
-    
     configuration = Configuration(
-        host=host_url,
+        host=plaid_env,
         api_key={
             'clientId': settings.PLAID_CLIENT_ID,
             'secret': settings.PLAID_SECRET,

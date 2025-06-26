@@ -3,6 +3,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional, List, Dict
 import logging
+from dotenv import load_dotenv
+import os
+
+# Load environment variables from .env file
+load_dotenv()
+
 from app.auth import get_current_user
 from app.plaid_client import create_link_token, exchange_public_token, get_transactions, get_accounts, store_access_token, get_access_token_for_user
 from app.config import settings
@@ -19,7 +25,6 @@ from reportlab.lib.units import inch
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_LEFT
 import tempfile
-import os
 import json
 
 # Configure logging based on environment
@@ -194,6 +199,9 @@ async def create_plaid_link_token(current_user: dict = Depends(get_current_user)
     logger.info("🔄 Creating Plaid link token")
     logger.info(f"👤 User ID: {current_user['user_id']}")
     
+    # Console log to confirm link token request (as requested)
+    print(f"[Plaid] Link token request by: {current_user.get('email', 'unknown')}")
+    
     try:
         user_id = current_user["user_id"]
         logger.info("🌐 Calling Plaid API to create link token...")
@@ -201,6 +209,9 @@ async def create_plaid_link_token(current_user: dict = Depends(get_current_user)
         
         logger.info("✅ Link token created successfully")
         logger.info(f"🔗 Link token: {link_token[:20]}...")
+        
+        # Console log to confirm link token response (as requested)
+        print(f"[Plaid] Link Token Response: {link_token[:20]}...")
         
         return {
             "link_token": link_token,
