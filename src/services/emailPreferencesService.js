@@ -2,76 +2,61 @@ import { auth } from '../firebase';
 
 const API_BASE_URL = 'http://localhost:8000/api/v1';
 
-class EmailPreferencesService {
-    async getAuthHeaders() {
-        const user = auth.currentUser;
-        if (!user) {
-            throw new Error('User not authenticated');
-        }
-        const token = await user.getIdToken();
-        return {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json',
-        };
+// Helper function to get auth token
+const getAuthToken = async () => {
+    const user = auth.currentUser;
+    if (!user) {
+        throw new Error('No authenticated user');
     }
+    return await user.getIdToken();
+};
 
-    async getEmailPreferences() {
+class EmailPreferencesService {
+    // Get user's email preferences
+    async getPreferences() {
         try {
-            const headers = await this.getAuthHeaders();
+            const token = await getAuthToken();
             const response = await fetch(`${API_BASE_URL}/email/preferences`, {
                 method: 'GET',
-                headers,
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                },
             });
 
             if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
+                const errorData = await response.json();
+                throw new Error(errorData.detail || 'Failed to fetch email preferences');
             }
 
-            const data = await response.json();
-            return data;
+            return await response.json();
         } catch (error) {
             console.error('Error fetching email preferences:', error);
             throw error;
         }
     }
 
-    async updateEmailPreferences(preferences) {
+    // Update user's email preferences
+    async updatePreferences(preferences) {
         try {
-            const headers = await this.getAuthHeaders();
+            const token = await getAuthToken();
             const response = await fetch(`${API_BASE_URL}/email/preferences`, {
                 method: 'PATCH',
-                headers,
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                },
                 body: JSON.stringify(preferences),
             });
 
             if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
+                const errorData = await response.json();
+                throw new Error(errorData.detail || 'Failed to update email preferences');
             }
 
-            const data = await response.json();
-            return data;
+            return await response.json();
         } catch (error) {
             console.error('Error updating email preferences:', error);
-            throw error;
-        }
-    }
-
-    async testWeeklyEmail() {
-        try {
-            const headers = await this.getAuthHeaders();
-            const response = await fetch(`${API_BASE_URL}/email/test-weekly`, {
-                method: 'POST',
-                headers,
-            });
-
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-
-            const data = await response.json();
-            return data;
-        } catch (error) {
-            console.error('Error sending test weekly email:', error);
             throw error;
         }
     }

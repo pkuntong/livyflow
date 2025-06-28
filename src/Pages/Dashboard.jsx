@@ -13,7 +13,7 @@ import { useAuth } from '../contexts/AuthContext';
 import plaidService from '../services/plaidService';
 import { createNotification } from '../services/notificationService';
 
-export default function Dashboard({ accounts, transactions }) {
+export default function Dashboard({ accounts = [], transactions = [] }) {
   const { user } = useAuth();
   const [plaidTransactions, setPlaidTransactions] = useState([]);
   const [plaidTransactionsLoading, setPlaidTransactionsLoading] = useState(false);
@@ -53,7 +53,7 @@ export default function Dashboard({ accounts, transactions }) {
   }, [user, hasShownWelcome]);
 
   // Combine manual transactions with Plaid transactions
-  const allTransactions = [...transactions, ...plaidTransactions];
+  const allTransactions = [...(Array.isArray(transactions) ? transactions : []), ...plaidTransactions];
 
   // Get Plaid accounts from the Accounts page context or fetch them here
   // For now, we'll use the accounts prop and let the Accounts page handle Plaid accounts separately

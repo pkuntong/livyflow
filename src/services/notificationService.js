@@ -87,47 +87,22 @@ export const markNotificationRead = async (notificationId) => {
 // Delete a notification
 export const deleteNotification = async (notificationId) => {
   try {
-    const token = await getAuthToken();
     const response = await fetch(`${API_BASE_URL}/notifications/${notificationId}`, {
       method: 'DELETE',
       headers: {
-        'Authorization': `Bearer ${token}`,
+        'Authorization': `Bearer ${getAuthToken()}`,
         'Content-Type': 'application/json',
       },
     });
 
     if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+      const errorData = await response.json();
+      throw new Error(errorData.detail || 'Failed to delete notification');
     }
 
-    const data = await response.json();
-    return data;
+    return await response.json();
   } catch (error) {
     console.error('Error deleting notification:', error);
-    throw error;
-  }
-};
-
-// Create test notifications (for testing purposes)
-export const createTestNotifications = async () => {
-  try {
-    const token = await getAuthToken();
-    const response = await fetch(`${API_BASE_URL}/notifications/test`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-    });
-
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-
-    const data = await response.json();
-    return data;
-  } catch (error) {
-    console.error('Error creating test notifications:', error);
     throw error;
   }
 }; 

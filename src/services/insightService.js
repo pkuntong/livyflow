@@ -33,28 +33,4 @@ export const fetchInsights = async () => {
     console.error('Error fetching insights:', error);
     throw error;
   }
-};
-
-// Create test insights (for testing purposes)
-export const createTestInsights = async () => {
-  try {
-    const token = await getAuthToken();
-    const response = await fetch(`${API_BASE_URL}/insights/test`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-    });
-
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-
-    const data = await response.json();
-    return data;
-  } catch (error) {
-    console.error('Error creating test insights:', error);
-    throw error;
-  }
 }; 

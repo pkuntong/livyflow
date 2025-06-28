@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Search, Filter, ArrowDownLeft, Calendar, DollarSign } from 'lucide-react';
+import { Plus, Search, Filter, ArrowDownLeft, Calendar, DollarSign, Receipt } from 'lucide-react';
 import { Menu } from '@headlessui/react';
 import TransactionModal from '../components/transactions/TransactionModal';
 import { useAuth } from '../contexts/AuthContext';
@@ -15,42 +15,6 @@ const CATEGORIES = [
   { value: 'food_dining', label: 'Food & Dining' },
   { value: 'health_fitness', label: 'Health & Fitness' },
   { value: 'travel', label: 'Travel' },
-];
-
-const mockAccounts = [
-  { id: 1, name: 'Main Checking', balance: 5420.50 },
-  { id: 2, name: 'Emergency Savings', balance: 12000.00 },
-  { id: 3, name: 'Chase Freedom', balance: -1250.30 },
-];
-
-const initialTransactions = [
-  {
-    id: 1,
-    description: 'Whole Foods',
-    amount: -125.50,
-    category: 'groceries',
-    account_id: 1,
-    date: '2024-12-14',
-    notes: 'Weekly groceries'
-  },
-  {
-    id: 2,
-    description: 'Uber Ride',
-    amount: -18.75,
-    category: 'transportation',
-    account_id: 1,
-    date: '2024-12-13',
-    notes: 'To downtown'
-  },
-  {
-    id: 3,
-    description: 'Netflix Subscription',
-    amount: -15.99,
-    category: 'entertainment',
-    account_id: 1,
-    date: '2024-12-12',
-    notes: 'Monthly subscription'
-  }
 ];
 
 function CategoryTag({ category }) {
@@ -107,7 +71,7 @@ function FilterDropdown({ options, value, onChange, buttonClassName }) {
 
 export default function Transactions() {
   const { user } = useAuth();
-  const [transactions, setTransactions] = useState(initialTransactions);
+  const [transactions, setTransactions] = useState([]);
   const [plaidTransactions, setPlaidTransactions] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedTransaction, setSelectedTransaction] = useState(null);
@@ -201,29 +165,22 @@ export default function Transactions() {
                          (transaction.notes || '').toLowerCase().includes(searchLower);
     
     const matchesCategory = selectedCategory === 'all' || 
-                           transaction.category === selectedCategory ||
-                           (Array.isArray(transaction.category) && transaction.category.includes(selectedCategory));
+                           (transaction.category || '').toLowerCase() === selectedCategory.toLowerCase();
     
     const matchesAccount = selectedAccount === 'all' || 
                           transaction.account_id?.toString() === selectedAccount;
     
-    // Date range filter
-    const transactionDate = new Date(transaction.date);
-    const matchesStartDate = !startDate || transactionDate >= new Date(startDate);
-    const matchesEndDate = !endDate || transactionDate <= new Date(endDate);
+    const matchesDateRange = (!startDate || transaction.date >= startDate) && 
+                            (!endDate || transaction.date <= endDate);
     
-    // Amount range filter
-    const amount = Math.abs(transaction.amount);
-    const matchesMinAmount = !minAmount || amount >= parseFloat(minAmount);
-    const matchesMaxAmount = !maxAmount || amount <= parseFloat(maxAmount);
+    const matchesAmountRange = (!minAmount || Math.abs(transaction.amount) >= parseFloat(minAmount)) && 
+                              (!maxAmount || Math.abs(transaction.amount) <= parseFloat(maxAmount));
     
-    return matchesSearch && matchesCategory && matchesAccount && 
-           matchesStartDate && matchesEndDate && 
-           matchesMinAmount && matchesMaxAmount;
+    return matchesSearch && matchesCategory && matchesAccount && matchesDateRange && matchesAmountRange;
   });
 
   const formatDate = (dateString) => {
-    const options = { month: 'short', day: 'numeric', year: 'numeric' };
+    const options = { year: 'numeric', month: 'short', day: 'numeric' };
     return new Date(dateString).toLocaleDateString('en-US', options);
   };
 
@@ -237,206 +194,236 @@ export default function Transactions() {
     setMaxAmount('');
   };
 
-  const hasActiveFilters = searchQuery || selectedCategory !== 'all' || selectedAccount !== 'all' || 
-                          startDate || endDate || minAmount || maxAmount;
+  const formatCurrency = (amount) => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    }).format(Math.abs(amount));
+  };
+
+  const getAccountOptions = () => {
+    // Get unique accounts from transactions
+    const accounts = [...new Set(allTransactions.map(t => t.account_id))];
+    return [
+      { value: 'all', label: 'All Accounts' },
+      ...accounts.map(accId => ({ 
+        value: accId.toString(), 
+        label: `Account ${accId}` 
+      }))
+    ];
+  };
 
   return (
     <div className="p-8">
+      {/* Header */}
       <div className="flex justify-between items-center mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Transactions</h1>
-          <p className="text-gray-600">Track and manage all your financial transactions</p>
+          <p className="text-gray-600">Track and manage your financial transactions</p>
         </div>
-        <button 
-          onClick={() => {
-            setSelectedTransaction(null);
-            setIsModalOpen(true);
-          }}
-          className="bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors font-medium"
+        <button
+          onClick={() => setIsModalOpen(true)}
+          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
         >
-          <Plus className="w-5 h-5" />
+          <Plus className="w-4 h-4" />
           Add Transaction
         </button>
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 mb-6">
-        <div className="p-6">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <Filter className="w-5 h-5 text-gray-600" />
-              <h2 className="text-lg font-semibold text-gray-900">Filters</h2>
-            </div>
-            {hasActiveFilters && (
-              <button
-                onClick={clearAllFilters}
-                className="text-sm text-gray-500 hover:text-gray-700 underline"
-              >
-                Clear all filters
-              </button>
-            )}
+      {/* Filters */}
+      <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100 mb-6">
+        <div className="flex items-center gap-4 mb-4">
+          <Filter className="w-5 h-5 text-gray-500" />
+          <h3 className="text-lg font-semibold text-gray-900">Filters</h3>
+        </div>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+          {/* Search */}
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Search transactions..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 mb-4">
-            {/* Search */}
-            <div className="relative">
-              <Search className="w-5 h-5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                placeholder="Search transactions..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
-              />
-            </div>
+          {/* Category Filter */}
+          <FilterDropdown
+            options={CATEGORIES}
+            value={selectedCategory}
+            onChange={setSelectedCategory}
+            buttonClassName="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+          />
 
-            {/* Category Filter */}
-            <FilterDropdown
-              options={CATEGORIES}
-              value={selectedCategory}
-              onChange={setSelectedCategory}
-              buttonClassName="w-full px-4 py-2 border border-emerald-500 text-emerald-700 rounded-lg hover:bg-emerald-50 transition-colors"
+          {/* Account Filter */}
+          <FilterDropdown
+            options={getAccountOptions()}
+            value={selectedAccount}
+            onChange={setSelectedAccount}
+            buttonClassName="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+          />
+
+          {/* Date Range */}
+          <div className="flex gap-2">
+            <input
+              type="date"
+              placeholder="Start date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
-
-            {/* Account Filter */}
-            <FilterDropdown
-              options={[
-                { value: 'all', label: 'All Accounts' },
-                ...mockAccounts.map(acc => ({ value: acc.id.toString(), label: acc.name }))
-              ]}
-              value={selectedAccount}
-              onChange={setSelectedAccount}
-              buttonClassName="w-full px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+            <input
+              type="date"
+              placeholder="End date"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
-
-            {/* Start Date */}
-            <div className="relative">
-              <Calendar className="w-5 h-5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                type="date"
-                placeholder="Start date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
-              />
-            </div>
-
-            {/* End Date */}
-            <div className="relative">
-              <Calendar className="w-5 h-5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                type="date"
-                placeholder="End date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
-              />
-            </div>
-
-            {/* Min Amount */}
-            <div className="relative">
-              <DollarSign className="w-5 h-5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                type="number"
-                placeholder="Min amount"
-                value={minAmount}
-                onChange={(e) => setMinAmount(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
-                step="0.01"
-                min="0"
-              />
-            </div>
-
-            {/* Max Amount */}
-            <div className="relative">
-              <DollarSign className="w-5 h-5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                type="number"
-                placeholder="Max amount"
-                value={maxAmount}
-                onChange={(e) => setMaxAmount(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
-                step="0.01"
-                min="0"
-              />
-            </div>
           </div>
 
-          {/* Loading indicator */}
-          {isLoading && (
-            <div className="flex items-center justify-center py-4">
-              <div className="flex items-center gap-2 text-blue-600">
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
-                Loading transactions...
-              </div>
-            </div>
-          )}
+          {/* Amount Range */}
+          <div className="flex gap-2">
+            <input
+              type="number"
+              placeholder="Min amount"
+              value={minAmount}
+              onChange={(e) => setMinAmount(e.target.value)}
+              className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
+            <input
+              type="number"
+              placeholder="Max amount"
+              value={maxAmount}
+              onChange={(e) => setMaxAmount(e.target.value)}
+              className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
+          </div>
+
+          {/* Clear Filters */}
+          <button
+            onClick={clearAllFilters}
+            className="px-4 py-2 text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+          >
+            Clear All
+          </button>
         </div>
       </div>
 
+      {/* Transactions List */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100">
-        <div className="p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-6">
-            All Transactions ({filteredTransactions.length})
-          </h2>
-
-          <div className="space-y-6">
-            {filteredTransactions.map(transaction => (
-              <div
-                key={transaction.id || transaction.transaction_id}
-                onClick={() => handleEditTransaction(transaction)}
-                className="flex items-start gap-4 p-4 hover:bg-gray-50 rounded-lg cursor-pointer transition-colors"
-              >
-                <div className="w-10 h-10 bg-red-100 rounded-xl flex items-center justify-center flex-shrink-0">
-                  <ArrowDownLeft className="w-5 h-5 text-red-600" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <h3 className="text-lg font-medium text-gray-900">
-                        {transaction.description || transaction.name || transaction.merchant_name || 'Unknown Transaction'}
-                      </h3>
-                      <div className="flex items-center gap-3 mt-1">
-                        {transaction.category && (
-                          <CategoryTag category={Array.isArray(transaction.category) ? transaction.category[0] : transaction.category} />
-                        )}
-                        <span className="text-gray-600">
-                          {transaction.isPlaidConnected ? 'Connected Account' : 
-                           mockAccounts.find(acc => acc.id === transaction.account_id)?.name || 'Unknown Account'}
-                        </span>
-                        <span className="text-gray-600">{formatDate(transaction.date)}</span>
+        {isLoading ? (
+          <div className="p-8 text-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+            <p className="text-gray-600">Loading transactions...</p>
+          </div>
+        ) : allTransactions.length === 0 ? (
+          <div className="p-8 text-center">
+            <div className="w-16 h-16 bg-gradient-to-br from-blue-100 to-purple-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Receipt className="w-8 h-8 text-blue-600" />
+            </div>
+            <h3 className="text-lg font-medium text-gray-900 mb-2">No Transactions Yet</h3>
+            <p className="text-gray-600 mb-4">
+              Connect your bank account or add manual transactions to start tracking your spending.
+            </p>
+            <button
+              onClick={() => setIsModalOpen(true)}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              <Plus className="w-4 h-4" />
+              Add Your First Transaction
+            </button>
+          </div>
+        ) : filteredTransactions.length === 0 ? (
+          <div className="p-8 text-center">
+            <div className="w-16 h-16 bg-gradient-to-br from-gray-100 to-gray-200 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Search className="w-8 h-8 text-gray-500" />
+            </div>
+            <h3 className="text-lg font-medium text-gray-900 mb-2">No Transactions Found</h3>
+            <p className="text-gray-600 mb-4">
+              Try adjusting your filters to see more transactions.
+            </p>
+            <button
+              onClick={clearAllFilters}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
+            >
+              Clear Filters
+            </button>
+          </div>
+        ) : (
+          <div className="overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-100">
+              <p className="text-sm text-gray-600">
+                Showing {filteredTransactions.length} of {allTransactions.length} transactions
+              </p>
+            </div>
+            <div className="divide-y divide-gray-100">
+              {filteredTransactions.map((transaction) => (
+                <div
+                  key={transaction.id}
+                  className="px-6 py-4 hover:bg-gray-50 transition-colors cursor-pointer"
+                  onClick={() => handleEditTransaction(transaction)}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                      <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                        transaction.amount < 0 ? 'bg-red-100' : 'bg-green-100'
+                      }`}>
+                        <ArrowDownLeft className={`w-5 h-5 ${
+                          transaction.amount < 0 ? 'text-red-600' : 'text-green-600'
+                        }`} />
                       </div>
-                      {transaction.notes && (
-                        <p className="text-gray-600 mt-2">{transaction.notes}</p>
-                      )}
+                      <div>
+                        <h4 className="font-medium text-gray-900">
+                          {transaction.description || transaction.name || 'Unknown Transaction'}
+                        </h4>
+                        <div className="flex items-center gap-2 text-sm text-gray-600">
+                          <span>{formatDate(transaction.date)}</span>
+                          <span>•</span>
+                          <span>Account {transaction.account_id || 'Unknown'}</span>
+                          {transaction.notes && (
+                            <>
+                              <span>•</span>
+                              <span>{transaction.notes}</span>
+                            </>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                    <p className={`text-lg font-semibold whitespace-nowrap ${
-                      transaction.amount < 0 ? 'text-red-600' : 'text-emerald-600'
-                    }`}>
-                      {transaction.amount < 0 ? '-' : '+'}${Math.abs(transaction.amount).toFixed(2)}
-                    </p>
+                    <div className="flex items-center gap-3">
+                      {transaction.category && (
+                        <CategoryTag category={transaction.category} />
+                      )}
+                      <div className="text-right">
+                        <p className={`font-semibold ${
+                          transaction.amount < 0 ? 'text-red-600' : 'text-green-600'
+                        }`}>
+                          {transaction.amount < 0 ? '-' : '+'}{formatCurrency(transaction.amount)}
+                        </p>
+                      </div>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
-            
-            {filteredTransactions.length === 0 && !isLoading && (
-              <div className="text-center py-8 text-gray-500">
-                {hasActiveFilters ? 'No transactions found matching your filters' : 'No transactions found'}
-              </div>
-            )}
+              ))}
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
+      {/* Transaction Modal */}
       <TransactionModal
         isOpen={isModalOpen}
         onClose={() => {
           setIsModalOpen(false);
           setSelectedTransaction(null);
         }}
-        onSave={handleAddTransaction}
-        accounts={mockAccounts}
+        onSubmit={handleAddTransaction}
         transaction={selectedTransaction}
+        accounts={[]}
       />
     </div>
   );

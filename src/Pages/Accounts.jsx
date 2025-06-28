@@ -1,8 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, CreditCard, PiggyBank, LineChart, Wallet, RefreshCw, ChevronDown, ChevronUp, Receipt, Calendar } from 'lucide-react';
-import AccountModal from '../components/accounts/AccountModal';
+import { Plus, CreditCard, PiggyBank, LineChart, Wallet, RefreshCw, ChevronDown, ChevronUp, Receipt, Calendar, TrendingUp, TrendingDown, DollarSign, Loader2 } from 'lucide-react';
 import ConnectBankAccount from '../components/ConnectBankAccount';
-import TestPlaidIntegration from '../components/TestPlaidIntegration';
 import { useAuth } from '../contexts/AuthContext';
 import plaidService from '../services/plaidService';
 
@@ -32,84 +30,6 @@ const ACCOUNT_CONFIGS = {
     tag: 'investment'
   }
 };
-
-const initialAccounts = [
-  {
-    id: 1,
-    name: 'Main Checking',
-    institution: 'Chase Bank',
-    type: 'depository',
-    subtype: 'checking',
-    balance: 5420.50,
-    icon: Wallet,
-    iconBgColor: 'bg-blue-100',
-    iconColor: 'text-blue-600',
-    tag: 'checking',
-    isPlaidConnected: false,
-    accountId: 'manual-1',
-    mask: '1234'
-  },
-  {
-    id: 2,
-    name: 'Emergency Savings',
-    institution: 'Chase Bank',
-    type: 'depository',
-    subtype: 'savings',
-    balance: 12000.00,
-    icon: PiggyBank,
-    iconBgColor: 'bg-emerald-100',
-    iconColor: 'text-emerald-600',
-    tag: 'savings',
-    isPlaidConnected: false,
-    accountId: 'manual-2',
-    mask: '5678'
-  },
-  {
-    id: 3,
-    name: 'Chase Freedom',
-    institution: 'Chase Bank',
-    type: 'credit',
-    subtype: 'credit card',
-    balance: -1250.30,
-    icon: CreditCard,
-    iconBgColor: 'bg-red-100',
-    iconColor: 'text-red-600',
-    tag: 'credit card',
-    isPlaidConnected: false,
-    accountId: 'manual-3',
-    mask: '9012'
-  },
-  {
-    id: 4,
-    name: 'Investment Portfolio',
-    institution: 'Fidelity',
-    type: 'investment',
-    subtype: 'investment',
-    balance: 8500.75,
-    icon: LineChart,
-    iconBgColor: 'bg-purple-100',
-    iconColor: 'text-purple-600',
-    tag: 'investment',
-    isPlaidConnected: false,
-    accountId: 'manual-4',
-    mask: '3456'
-  },
-  {
-    id: 5,
-    name: 'Olivia Kuntong',
-    institution: 'Chase',
-    type: 'depository',
-    subtype: 'checking',
-    balance: 20000000.00,
-    icon: Wallet,
-    iconBgColor: 'bg-blue-100',
-    iconColor: 'text-blue-600',
-    tag: 'checking',
-    isPlaidConnected: false,
-    accountId: 'manual-5',
-    mask: '7890'
-  }
-];
 
 function formatCurrency(amount) {
   return new Intl.NumberFormat('en-US', {
@@ -335,16 +255,15 @@ function AccountCard({ account }) {
 
 export default function Accounts() {
   const { user } = useAuth();
-  const [accounts, setAccounts] = useState(initialAccounts);
+  const [accounts, setAccounts] = useState([]);
   const [plaidAccounts, setPlaidAccounts] = useState([]);
-  const [isModalOpen, setIsModalOpen] = useState(false);
   const [showPlaidConnect, setShowPlaidConnect] = useState(false);
   const [linkToken, setLinkToken] = useState(null);
   const [plaidLoading, setPlaidLoading] = useState(false);
   const [plaidAccountsLoading, setPlaidAccountsLoading] = useState(false);
   const [plaidAccountsError, setPlaidAccountsError] = useState(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const totalBalance = accounts.reduce((sum, account) => sum + account.balance, 0);
+  const totalBalance = plaidAccounts.reduce((sum, account) => sum + account.balance, 0);
 
   // Fetch Plaid accounts when user is authenticated
   useEffect(() => {
@@ -392,45 +311,12 @@ export default function Accounts() {
       });
   }, [user]);
 
-  const handleAddAccount = (newAccount) => {
-    const accountWithId = {
-      ...newAccount,
-      id: Date.now(),
-      isPlaidConnected: false,
-      accountId: `manual-${Date.now()}`,
-      mask: Math.floor(Math.random() * 9000) + 1000, // Random 4-digit mask
-      type: newAccount.type?.toLowerCase() || 'depository',
-      subtype: newAccount.type?.toLowerCase() || 'checking'
-    };
-    
-    setAccounts(prev => [...prev, accountWithId]);
-    setIsModalOpen(false);
-  };
-
   const handlePlaidSuccess = (result, metadata) => {
     console.log("✅ Plaid connection successful:", result);
     console.log("📋 Metadata:", metadata);
     
-    // Create a new account entry for the connected bank
-    const newAccount = {
-      id: Date.now(),
-      name: metadata.institution?.name || 'Connected Bank Account',
-      institution: metadata.institution?.name || 'Connected Bank',
-      type: 'depository',
-      subtype: 'checking',
-      balance: 0, // Will be updated when accounts are fetched
-      icon: Wallet,
-      iconBgColor: 'bg-blue-100',
-      iconColor: 'text-blue-600',
-      tag: 'checking',
-      isPlaidConnected: true,
-      accountId: `plaid-${Date.now()}`,
-      mask: '****',
-      accessToken: result.access_token,
-      itemId: result.item_id
-    };
-    
-    setAccounts(prev => [...prev, newAccount]);
+    // Refresh accounts after successful connection
+    fetchPlaidAccounts();
     setShowPlaidConnect(false);
   };
 
@@ -519,7 +405,7 @@ export default function Accounts() {
       <div className="flex justify-between items-center mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Accounts</h1>
-          <p className="text-gray-600">Manage your financial accounts and track balances</p>
+          <p className="text-gray-600">Manage your connected bank accounts and track balances</p>
         </div>
         <div className="flex items-center gap-6">
           <div className="text-right">
@@ -533,13 +419,6 @@ export default function Accounts() {
             >
               <CreditCard className="w-5 h-5" />
               Connect Bank
-            </button>
-            <button 
-              onClick={() => setIsModalOpen(true)}
-              className="bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors font-medium"
-            >
-              <Plus className="w-5 h-5" />
-              Add Account
             </button>
           </div>
         </div>
@@ -558,16 +437,11 @@ export default function Accounts() {
         </div>
       )}
 
-      {/* Test Integration Component */}
-      <div className="mb-6">
-        <TestPlaidIntegration />
-      </div>
-
       {/* Plaid Accounts Section */}
       {user && (
         <div className="mb-8">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-semibold text-gray-900">Connected Bank Accounts</h2>
+            <h2 className="text-xl font-semibold text-gray-900">Bank Accounts</h2>
             <div className="flex items-center gap-2">
               {plaidAccountsLoading && (
                 <div className="flex items-center gap-2 text-blue-600">
@@ -630,16 +504,6 @@ export default function Accounts() {
         </div>
       )}
 
-      {/* Manual Accounts Section */}
-      <div className="mb-8">
-        <h2 className="text-xl font-semibold text-gray-900 mb-4">Manual Accounts</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {accounts.map(account => (
-            <AccountCard key={account.id} account={account} />
-          ))}
-        </div>
-      </div>
-
       {/* Plaid Connect Modal */}
       {showPlaidConnect && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
@@ -658,12 +522,6 @@ export default function Accounts() {
           </div>
         </div>
       )}
-
-      <AccountModal
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        onSave={handleAddAccount}
-      />
     </div>
   );
 } 

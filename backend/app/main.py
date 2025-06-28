@@ -1628,39 +1628,39 @@ async def delete_notification(
     Delete a notification for the authenticated user.
     Requires authentication via Bearer token.
     """
-    logger.info(f"🔄 Deleting notification: {notification_id}")
+    logger.info("🗑️ Deleting notification")
     logger.info(f"👤 User ID: {current_user['user_id']}")
+    logger.info(f"🔔 Notification ID: {notification_id}")
     
     try:
         user_id = current_user["user_id"]
         
-        # Get notifications for user
+        # Get user notifications
         user_notifications = get_user_notifications(user_id)
         
         # Find the notification to delete
-        notification_index = next((i for i, n in enumerate(user_notifications) if n['id'] == notification_id), None)
-        if notification_index is None:
+        notification_to_delete = None
+        for notification in user_notifications:
+            if notification["id"] == notification_id:
+                notification_to_delete = notification
+                break
+        
+        if not notification_to_delete:
+            logger.warning(f"⚠️ Notification {notification_id} not found for user {user_id}")
             raise HTTPException(
                 status_code=404,
-                detail=f"Notification not found: {notification_id}"
+                detail="Notification not found"
             )
         
-        # Check if user owns this notification
-        if user_notifications[notification_index]['user_id'] != user_id:
-            raise HTTPException(
-                status_code=403,
-                detail="Access denied: You can only delete your own notifications"
-            )
+        # Remove the notification
+        updated_notifications = [n for n in user_notifications if n["id"] != notification_id]
+        save_user_notifications(user_id, updated_notifications)
         
-        # Remove notification
-        deleted_notification = user_notifications.pop(notification_index)
-        save_user_notifications(user_id, user_notifications)
-        
-        logger.info(f"✅ Notification deleted successfully: {notification_id}")
+        logger.info(f"✅ Notification {notification_id} deleted successfully")
         
         return {
             "message": "Notification deleted successfully",
-            "deleted_notification": deleted_notification
+            "notification_id": notification_id
         }
         
     except HTTPException:
@@ -1672,65 +1672,6 @@ async def delete_notification(
             detail=f"Failed to delete notification: {str(e)}"
         )
 
-@app.post("/api/v1/notifications/test")
-async def create_test_notifications(current_user: dict = Depends(get_current_user)):
-    """
-    Create test notifications for the authenticated user.
-    This endpoint is for testing purposes only.
-    """
-    logger.info("🔄 Creating test notifications")
-    logger.info(f"👤 User ID: {current_user['user_id']}")
-    
-    try:
-        user_id = current_user["user_id"]
-        
-        # Create sample notifications
-        test_notifications = [
-            {
-                "title": "Welcome to LivyFlow! 🎉",
-                "message": "Your financial journey starts here. We'll help you track spending, set budgets, and achieve your financial goals.",
-                "type": "success"
-            },
-            {
-                "title": "Budget Alert: Food & Dining",
-                "message": "You're at 85% of your Food & Dining budget. Only $45.00 remaining this month.",
-                "type": "info"
-            },
-            {
-                "title": "Over Budget: Entertainment",
-                "message": "You've exceeded your Entertainment budget by $25.50. Consider reviewing your spending.",
-                "type": "warning"
-            },
-            {
-                "title": "Great Job: Transportation",
-                "message": "You're doing great with your Transportation budget! You've only used 35% so far.",
-                "type": "success"
-            }
-        ]
-        
-        created_notifications = []
-        for notification_data in test_notifications:
-            notification = create_notification(
-                user_id=user_id,
-                title=notification_data["title"],
-                message=notification_data["message"],
-                notification_type=notification_data["type"]
-            )
-            created_notifications.append(notification)
-        
-        logger.info(f"✅ Created {len(created_notifications)} test notifications")
-        
-        return {
-            "message": f"Created {len(created_notifications)} test notifications",
-            "notifications": created_notifications
-        }
-        
-    except Exception as e:
-        logger.error(f"❌ Failed to create test notifications: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to create test notifications: {str(e)}"
-        )
 
 @app.get("/api/v1/insights")
 async def get_insights(current_user: dict = Depends(get_current_user)):
@@ -1769,78 +1710,6 @@ async def get_insights(current_user: dict = Depends(get_current_user)):
             detail=f"Failed to get insights: {str(e)}"
         )
 
-@app.post("/api/v1/insights/test")
-async def create_test_insights(current_user: dict = Depends(get_current_user)):
-    """
-    Create test insights for the authenticated user.
-    This endpoint is for testing purposes only.
-    """
-    logger.info("🔄 Creating test insights")
-    logger.info(f"👤 User ID: {current_user['user_id']}")
-    
-    try:
-        user_id = current_user["user_id"]
-        
-        # Create sample insights
-        test_insights = [
-            {
-                "title": "Top Spending Category: Food & Dining",
-                "description": "You spent $450.75 on Food & Dining this month. Consider setting a budget for this category.",
-                "type": "spending",
-                "category": "food_and_dining",
-                "amount": 450.75
-            },
-            {
-                "title": "Potential Subscriptions Detected",
-                "description": "Found 3 recurring payments: Netflix, Spotify, Amazon Prime. Review these to ensure you're not paying for unused services.",
-                "type": "subscription",
-                "amount": 3
-            },
-            {
-                "title": "High Spending Days Detected",
-                "description": "You had 4 days with unusually high spending. Consider what triggers these spending spikes.",
-                "type": "pattern",
-                "amount": 4
-            },
-            {
-                "title": "Savings Opportunity",
-                "description": "You spent $1,250.00 this month. By reducing spending by 10%, you could save $125.00 monthly.",
-                "type": "savings",
-                "amount": 125.00
-            },
-            {
-                "title": "Weekend Spending Pattern",
-                "description": "You spend 65% of your money on weekends. Consider planning activities that don't require spending.",
-                "type": "pattern",
-                "amount": 0.65
-            }
-        ]
-        
-        created_insights = []
-        for insight_data in test_insights:
-            insight = create_insight(
-                user_id=user_id,
-                title=insight_data["title"],
-                description=insight_data["description"],
-                insight_type=insight_data["type"],
-                category=insight_data.get("category"),
-                amount=insight_data.get("amount")
-            )
-            created_insights.append(insight)
-        
-        logger.info(f"✅ Created {len(created_insights)} test insights")
-        
-        return {
-            "message": f"Created {len(created_insights)} test insights",
-            "insights": created_insights
-        }
-        
-    except Exception as e:
-        logger.error(f"❌ Failed to create test insights: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to create test insights: {str(e)}"
-        )
 
 # Helper functions for insight management
 def generate_insight_id():
@@ -2673,78 +2542,6 @@ async def get_recurring_subscriptions(current_user: dict = Depends(get_current_u
             detail=f"Failed to detect recurring subscriptions: {str(e)}"
         )
 
-@app.post("/api/v1/transactions/recurring/test")
-async def create_test_recurring_data(current_user: dict = Depends(get_current_user)):
-    """
-    Create test recurring subscription data for development/testing.
-    Requires authentication via Bearer token.
-    """
-    logger.info("🔄 Creating test recurring subscription data")
-    logger.info(f"👤 User ID: {current_user['user_id']}")
-    
-    try:
-        user_id = current_user["user_id"]
-        
-        # Get access token for user
-        access_token = get_access_token_for_user(user_id)
-        if not access_token:
-            logger.warning(f"⚠️ No access token found for user: {user_id}")
-            return {
-                "message": "No bank account connected. Connect your bank to test recurring subscriptions.",
-                "success": False
-            }
-        
-        # Create test transactions that simulate recurring subscriptions
-        test_subscriptions = [
-            {
-                "name": "Netflix",
-                "amount": 15.99,
-                "frequency": "Monthly",
-                "dates": ["2025-01-01", "2025-02-01", "2025-03-01", "2025-04-01", "2025-05-01", "2025-06-01"]
-            },
-            {
-                "name": "Spotify Premium",
-                "amount": 9.99,
-                "frequency": "Monthly", 
-                "dates": ["2025-01-05", "2025-02-05", "2025-03-05", "2025-04-05", "2025-05-05", "2025-06-05"]
-            },
-            {
-                "name": "Amazon Prime",
-                "amount": 12.99,
-                "frequency": "Monthly",
-                "dates": ["2025-01-10", "2025-02-10", "2025-03-10", "2025-04-10", "2025-05-10", "2025-06-10"]
-            },
-            {
-                "name": "Adobe Creative Cloud",
-                "amount": 52.99,
-                "frequency": "Monthly",
-                "dates": ["2025-01-15", "2025-02-15", "2025-03-15", "2025-04-15", "2025-05-15", "2025-06-15"]
-            },
-            {
-                "name": "Gym Membership",
-                "amount": 45.00,
-                "frequency": "Monthly",
-                "dates": ["2025-01-20", "2025-02-20", "2025-03-20", "2025-04-20", "2025-05-20", "2025-06-20"]
-            }
-        ]
-        
-        # Note: In a real implementation, you would add these transactions to the Plaid sandbox
-        # For now, we'll just return a success message
-        logger.info(f"✅ Test data created for {len(test_subscriptions)} subscriptions")
-        
-        return {
-            "message": f"Test data created for {len(test_subscriptions)} recurring subscriptions. Connect to Plaid sandbox to see real data.",
-            "test_subscriptions": test_subscriptions,
-            "success": True
-        }
-        
-    except Exception as e:
-        logger.error(f"❌ Failed to create test recurring data: {str(e)}")
-        logger.error(f"❌ Error type: {type(e).__name__}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to create test recurring data: {str(e)}"
-        )
 
 @app.post("/api/v1/alerts")
 async def create_alert_rule(request: CreateAlertRuleRequest, current_user: dict = Depends(get_current_user)):
@@ -3498,36 +3295,6 @@ async def update_email_preferences(
             detail=f"Failed to update email preferences: {str(e)}"
         )
 
-@app.post("/api/v1/email/test-weekly")
-async def test_weekly_email(current_user: dict = Depends(get_current_user)):
-    """
-    Send a test weekly email summary to the current user.
-    Requires authentication via Bearer token.
-    """
-    logger.info("🔄 Sending test weekly email")
-    logger.info(f"👤 User ID: {current_user['user_id']}")
-    
-    try:
-        user_id = current_user["user_id"]
-        
-        # Temporarily enable weekly emails for this user
-        weekly_scheduler.set_user_preference(user_id, "weekly_email_summary", True)
-        
-        # Send the weekly summary
-        weekly_scheduler.send_weekly_summary_for_user(user_id)
-        
-        logger.info(f"✅ Test weekly email sent to user {user_id}")
-        return {
-            "message": "Test weekly email sent successfully",
-            "user_id": user_id
-        }
-        
-    except Exception as e:
-        logger.error(f"❌ Failed to send test weekly email: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to send test weekly email: {str(e)}"
-        )
 
 # Initialize the weekly email scheduler when the app starts
 @app.on_event("startup")
@@ -3540,23 +3307,6 @@ async def startup_event():
     
     logger.info("✅ LivyFlow API started successfully")
 
-@app.get("/api/v1/debug/send-test-summary")
-async def debug_send_test_summary(user_id: str, request: Request):
-    """
-    Debug route to send a mock weekly summary email to the specified user_id.
-    No authentication required (for local testing only).
-    """
-    logger.info(f"[DEBUG] Sending test summary email for user_id={user_id}")
-    try:
-        from app.scheduler import weekly_scheduler
-        # Temporarily enable weekly emails for this user
-        weekly_scheduler.set_user_preference(user_id, "weekly_email_summary", True)
-        # Send the weekly summary (uses mock data if user not found)
-        weekly_scheduler.send_weekly_summary_for_user(user_id)
-        return {"message": f"Test weekly summary email sent for user_id={user_id}"}
-    except Exception as e:
-        logger.error(f"[DEBUG] Failed to send test summary: {str(e)}")
-        return {"error": str(e)}
 
 if __name__ == "__main__":
     import uvicorn

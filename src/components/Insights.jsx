@@ -1,14 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Brain, TrendingUp, DollarSign, Calendar, Zap, RefreshCw, Loader2 } from 'lucide-react';
-import { fetchInsights, createTestInsights } from '../services/insightService';
+import { Brain, Zap, TrendingUp, Calendar, DollarSign, RefreshCw, Loader2 } from 'lucide-react';
+import { fetchInsights } from '../services/insightService';
 
 const Insights = () => {
   const [insights, setInsights] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [isGenerating, setIsGenerating] = useState(false);
 
-  // Fetch insights
   const loadInsights = async () => {
     try {
       setLoading(true);
@@ -20,20 +18,6 @@ const Insights = () => {
       setError('Failed to load insights');
     } finally {
       setLoading(false);
-    }
-  };
-
-  // Create test insights
-  const handleCreateTestInsights = async () => {
-    try {
-      setIsGenerating(true);
-      await createTestInsights();
-      await loadInsights(); // Reload insights
-    } catch (err) {
-      console.error('Error creating test insights:', err);
-      setError('Failed to create test insights');
-    } finally {
-      setIsGenerating(false);
     }
   };
 
@@ -134,21 +118,6 @@ const Insights = () => {
           
           <div className="flex items-center gap-2">
             <button
-              onClick={handleCreateTestInsights}
-              disabled={isGenerating}
-              className="text-xs px-3 py-1.5 bg-purple-100 text-purple-700 rounded-lg hover:bg-purple-200 disabled:opacity-50 transition-colors"
-              title="Create test insights"
-            >
-              {isGenerating ? (
-                <div className="flex items-center gap-1">
-                  <Loader2 className="w-3 h-3 animate-spin" />
-                  Generating...
-                </div>
-              ) : (
-                'Test'
-              )}
-            </button>
-            <button
               onClick={loadInsights}
               disabled={loading}
               className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -184,23 +153,6 @@ const Insights = () => {
             <p className="text-gray-600 mb-4">
               Connect your bank account and add some transactions to get AI-powered insights about your spending patterns.
             </p>
-            <button
-              onClick={handleCreateTestInsights}
-              disabled={isGenerating}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 transition-colors"
-            >
-              {isGenerating ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  Generating Test Insights...
-                </>
-              ) : (
-                <>
-                  <Zap className="w-4 h-4" />
-                  Generate Test Insights
-                </>
-              )}
-            </button>
           </div>
         ) : (
           <div className="space-y-4">
@@ -218,27 +170,22 @@ const Insights = () => {
                   {/* Content */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-start justify-between gap-4">
-                      <div className="flex-1">
-                        <h3 className="font-semibold text-lg mb-1">
-                          {insight.title}
-                        </h3>
-                        <p className="text-sm opacity-90 leading-relaxed">
-                          {insight.description}
-                        </p>
+                      <div className="flex-1 min-w-0">
+                        <h4 className="font-semibold text-gray-900 mb-1">{insight.title}</h4>
+                        <p className="text-sm text-gray-700 mb-2">{insight.description}</p>
                         
-                        {/* Additional details */}
-                        <div className="flex items-center gap-4 mt-3 text-xs opacity-75">
-                          <span>{formatTimestamp(insight.created_at)}</span>
+                        <div className="flex items-center gap-4 text-xs text-gray-500">
                           {insight.category && (
-                            <span className="px-2 py-1 bg-white bg-opacity-50 rounded-full">
-                              {insight.category.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                            <span className="bg-white bg-opacity-50 px-2 py-1 rounded">
+                              {insight.category.replace('_', ' ')}
                             </span>
                           )}
-                          {insight.amount && (
+                          {insight.amount !== null && insight.amount !== undefined && (
                             <span className="font-medium">
                               {formatAmount(insight.amount, insight.type)}
                             </span>
                           )}
+                          <span>{formatTimestamp(insight.created_at)}</span>
                         </div>
                       </div>
                     </div>
@@ -246,18 +193,6 @@ const Insights = () => {
                 </div>
               </div>
             ))}
-          </div>
-        )}
-
-        {/* Footer */}
-        {insights.length > 0 && (
-          <div className="mt-6 pt-4 border-t border-gray-100">
-            <div className="flex items-center justify-between text-sm text-gray-500">
-              <span>{insights.length} insight{insights.length !== 1 ? 's' : ''} generated</span>
-              <span className="text-xs">
-                Insights are generated automatically based on your transaction data
-              </span>
-            </div>
           </div>
         )}
       </div>

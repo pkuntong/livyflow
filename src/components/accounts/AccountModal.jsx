@@ -8,15 +8,6 @@ const ACCOUNT_TYPES = [
   { value: 'INVESTMENT', label: 'Investment Account' }
 ];
 
-const BANKS = [
-  { value: 'Chase Bank', label: 'Chase Bank' },
-  { value: 'Bank of America', label: 'Bank of America' },
-  { value: 'Wells Fargo', label: 'Wells Fargo' },
-  { value: 'Fidelity', label: 'Fidelity' },
-  { value: 'Vanguard', label: 'Vanguard' },
-  { value: 'Charles Schwab', label: 'Charles Schwab' }
-];
-
 export default function AccountModal({ isOpen, onClose, onSave }) {
   const [formData, setFormData] = useState({
     name: '',
@@ -30,7 +21,7 @@ export default function AccountModal({ isOpen, onClose, onSave }) {
   const validateForm = () => {
     const newErrors = {};
     if (!formData.name.trim()) newErrors.name = 'Account name is required';
-    if (!formData.institution) newErrors.institution = 'Bank/Institution is required';
+    if (!formData.institution.trim()) newErrors.institution = 'Bank/Institution is required';
     if (!formData.type) newErrors.type = 'Account type is required';
     if (!formData.balance || isNaN(formData.balance)) newErrors.balance = 'Valid balance is required';
     
@@ -93,21 +84,16 @@ export default function AccountModal({ isOpen, onClose, onSave }) {
             <label htmlFor="institution" className="block text-sm font-medium text-gray-700 mb-1">
               Bank / Institution
             </label>
-            <select
+            <input
+              type="text"
               id="institution"
               value={formData.institution}
               onChange={(e) => setFormData({ ...formData, institution: e.target.value })}
               className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 ${
                 errors.institution ? 'border-red-300' : 'border-gray-300'
               }`}
-            >
-              <option value="">Select a bank</option>
-              {BANKS.map(bank => (
-                <option key={bank.value} value={bank.value}>
-                  {bank.label}
-                </option>
-              ))}
-            </select>
+              placeholder="e.g., Chase Bank, Bank of America"
+            />
             {errors.institution && <p className="mt-1 text-sm text-red-600">{errors.institution}</p>}
           </div>
 

@@ -14,23 +14,6 @@ import Login from './Pages/Login'
 import { LayoutGrid, Receipt, PiggyBank, CreditCard, LineChart, User } from 'lucide-react'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 
-// Get current month in YYYY-MM format
-const currentMonth = new Date().toISOString().slice(0, 7);
-
-// Mock data for demonstration
-const mockAccounts = [
-  { id: 1, name: 'Checking Account', balance: 2500 },
-  { id: 2, name: 'Savings Account', balance: 15000 },
-  { id: 3, name: 'Credit Card', balance: -500 }
-]
-
-const mockTransactions = [
-  { id: 1, date: `${currentMonth}-15`, amount: -125.50, description: 'Whole Foods', category: 'groceries', account_id: 1 },
-  { id: 2, date: `${currentMonth}-14`, amount: -18.75, description: 'Uber Ride', category: 'transportation', account_id: 1 },
-  { id: 3, date: `${currentMonth}-13`, amount: -15.99, description: 'Netflix Subscription', category: 'entertainment', account_id: 1 },
-  { id: 4, date: `${currentMonth}-12`, amount: -4.50, description: 'Coffee Shop', category: 'food_dining', account_id: 2 }
-]
-
 // Protected Route component
 function ProtectedRoute({ children }) {
   const { user } = useAuth();
@@ -56,8 +39,8 @@ function AppRoutes() {
           <Layout />
         </ProtectedRoute>
       }>
-        <Route index element={<Dashboard accounts={mockAccounts} transactions={mockTransactions} />} />
-        <Route path="dashboard" element={<Dashboard accounts={mockAccounts} transactions={mockTransactions} />} />
+        <Route index element={<Dashboard />} />
+        <Route path="dashboard" element={<Dashboard />} />
         <Route path="transactions" element={<Transactions />} />
         <Route path="budgets" element={<Budgets />} />
         <Route path="reports" element={<Reports />} />

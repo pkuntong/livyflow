@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Menu } from '@headlessui/react';
-import { ChevronDown, TrendingUp, TrendingDown, Calculator, Clock } from 'lucide-react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
+import { ChevronDown, TrendingUp, TrendingDown, Calculator, Clock, BarChart3, LineChart } from 'lucide-react';
+import { LineChart as RechartsLineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
 
 const TIME_PERIODS = [
   { label: 'Last 6 Months', value: '6m' },
@@ -9,24 +9,6 @@ const TIME_PERIODS = [
   { label: 'Last Month', value: '1m' },
   { label: 'This Year', value: '1y' },
 ];
-
-const mockData = {
-  incomeVsExpenses: [
-    { month: 'Jan', income: 800, expenses: 322.93 },
-    { month: 'Feb', income: 900, expenses: 450.50 },
-    { month: 'Mar', income: 750, expenses: 380.25 },
-    { month: 'Apr', income: 850, expenses: 420.75 },
-    { month: 'May', income: 800, expenses: 322.93 },
-    { month: 'Jun', income: 950, expenses: 500.00 },
-  ],
-  topSpendingCategories: [
-    { category: 'food dining', amount: 150.50 },
-    { category: 'entertainment', amount: 89.99 },
-    { category: 'transportation', amount: 75.25 },
-    { category: 'shopping', amount: 120.75 },
-    { category: 'bills utilities', amount: 200.00 },
-  ]
-};
 
 function StatCard({ title, amount, subtitle, trend, icon: Icon, color }) {
   return (
@@ -74,12 +56,6 @@ function TimeSelector({ selectedPeriod, onPeriodChange }) {
 
 export default function Analytics() {
   const [selectedPeriod, setSelectedPeriod] = useState(TIME_PERIODS[0]);
-  const [data] = useState(mockData);
-
-  const totalIncome = 800;
-  const totalExpenses = 322.93;
-  const netIncome = totalIncome - totalExpenses;
-  const savingsRate = ((netIncome / totalIncome) * 100).toFixed(1);
 
   const formatCurrency = (amount) => {
     return new Intl.NumberFormat('en-US', {
@@ -103,84 +79,27 @@ export default function Analytics() {
         />
       </div>
 
-      {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-        <StatCard
-          title="Total Income"
-          amount={formatCurrency(totalIncome)}
-          subtitle={`Avg: ${formatCurrency(133.33)}/month`}
-          icon={TrendingUp}
-          color="bg-emerald-500"
-        />
-        <StatCard
-          title="Total Expenses"
-          amount={formatCurrency(totalExpenses)}
-          subtitle={`Avg: ${formatCurrency(53.822)}/month`}
-          icon={TrendingDown}
-          color="bg-red-500"
-        />
-        <StatCard
-          title="Net Income"
-          amount={formatCurrency(netIncome)}
-          subtitle="Period total"
-          icon={Calculator}
-          color="bg-blue-500"
-        />
-        <StatCard
-          title="Savings Rate"
-          amount={`${savingsRate}%`}
-          subtitle="Of total income"
-          icon={Clock}
-          color="bg-purple-500"
-        />
-      </div>
-
-      {/* Charts Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Income vs Expenses Chart */}
-        <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100">
-          <h2 className="text-lg font-semibold text-gray-900 mb-1">Income vs Expenses</h2>
-          <p className="text-gray-600 mb-6">Monthly comparison over time</p>
-          <div className="h-[300px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={data.incomeVsExpenses}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis dataKey="month" stroke="#6b7280" />
-                <YAxis stroke="#6b7280" />
-                <Tooltip />
-                <Line
-                  type="monotone"
-                  dataKey="income"
-                  stroke="#10b981"
-                  strokeWidth={2}
-                  dot={{ fill: '#10b981', strokeWidth: 2 }}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="expenses"
-                  stroke="#ef4444"
-                  strokeWidth={2}
-                  dot={{ fill: '#ef4444', strokeWidth: 2 }}
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
+      {/* Empty State */}
+      <div className="text-center py-16">
+        <div className="w-20 h-20 bg-gradient-to-br from-blue-100 to-purple-100 rounded-full flex items-center justify-center mx-auto mb-6">
+          <BarChart3 className="w-10 h-10 text-blue-600" />
         </div>
-
-        {/* Top Spending Categories Chart */}
-        <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100">
-          <h2 className="text-lg font-semibold text-gray-900 mb-1">Top Spending Categories</h2>
-          <p className="text-gray-600 mb-6">Where your money goes</p>
-          <div className="h-[300px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={data.topSpendingCategories} layout="vertical">
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis type="number" stroke="#6b7280" />
-                <YAxis dataKey="category" type="category" stroke="#6b7280" width={100} />
-                <Tooltip />
-                <Bar dataKey="amount" fill="#8b5cf6" radius={[0, 4, 4, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
+        <h3 className="text-xl font-semibold text-gray-900 mb-3">No Analytics Data Yet</h3>
+        <p className="text-gray-600 mb-6 max-w-md mx-auto">
+          Connect your bank account and add some transactions to see detailed analytics about your spending patterns, income vs expenses, and financial trends.
+        </p>
+        <div className="flex items-center justify-center gap-4 text-sm text-gray-500">
+          <div className="flex items-center gap-2">
+            <LineChart className="w-4 h-4" />
+            <span>Income vs Expenses</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <BarChart3 className="w-4 h-4" />
+            <span>Spending Categories</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <TrendingUp className="w-4 h-4" />
+            <span>Financial Trends</span>
           </div>
         </div>
       </div>
