@@ -17,7 +17,7 @@ def initialize_firebase():
     try:
         if not firebase_admin._apps:
             # Check if we have a service account key file
-            service_account_path = os.getenv("FIREBASE_SERVICE_ACCOUNT_KEY_PATH")
+            service_account_path = settings.FIREBASE_SERVICE_ACCOUNT_KEY_PATH
             if service_account_path and os.path.exists(service_account_path):
                 cred = credentials.Certificate(service_account_path)
                 firebase_admin.initialize_app(cred)
