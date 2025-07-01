@@ -3,12 +3,16 @@ import { auth } from '../firebase';
 
 class PlaidService {
   constructor() {
-    if (!import.meta.env.VITE_API_URL) {
-      throw new Error("Missing VITE_API_URL environment variable");
-    }
-    this.baseURL = import.meta.env.VITE_API_URL;
+    this.baseURL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
     console.log("🔧 PlaidService initialized with API URL:", this.baseURL);
     console.log("🌍 Environment:", import.meta.env.VITE_ENVIRONMENT || 'development');
+    
+    // Log environment variable status for debugging
+    if (!import.meta.env.VITE_API_URL) {
+      console.warn("⚠️ VITE_API_URL not found, using fallback URL:", this.baseURL);
+    } else {
+      console.log("✅ VITE_API_URL found:", import.meta.env.VITE_API_URL);
+    }
   }
 
   // Get Firebase ID token for authentication
