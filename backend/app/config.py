@@ -1,6 +1,7 @@
 import os
 from typing import List, Optional
-from pydantic import BaseSettings, validator
+from pydantic_settings import BaseSettings
+from pydantic import validator, ConfigDict
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
@@ -8,8 +9,7 @@ load_dotenv()
 
 class Settings(BaseSettings):
     # Allow extra fields to prevent validation errors from frontend env vars
-    class Config:
-        extra = "ignore"
+    model_config = ConfigDict(extra='ignore')
     
     # Environment
     ENVIRONMENT: str = "development"
