@@ -24,10 +24,33 @@ def initialize_firebase():
                 logger.info("✅ Firebase Admin SDK initialized with service account key")
                 return True
             else:
-                # Initialize with default credentials (for development)
-                firebase_admin.initialize_app()
-                logger.info("✅ Firebase Admin SDK initialized with default credentials")
-                return True
+                # Check if we have Firebase config environment variables
+                if (settings.FIREBASE_PROJECT_ID and 
+                    settings.FIREBASE_PRIVATE_KEY and 
+                    settings.FIREBASE_CLIENT_EMAIL):
+                    # Create credentials from environment variables
+                    cred_dict = {
+                        "type": "service_account",
+                        "project_id": settings.FIREBASE_PROJECT_ID,
+                        "private_key_id": settings.FIREBASE_PRIVATE_KEY_ID,
+                        "private_key": settings.FIREBASE_PRIVATE_KEY.replace('\\n', '\n'),
+                        "client_email": settings.FIREBASE_CLIENT_EMAIL,
+                        "client_id": settings.FIREBASE_CLIENT_ID,
+                        "auth_uri": settings.FIREBASE_AUTH_URI,
+                        "token_uri": settings.FIREBASE_TOKEN_URI,
+                        "auth_provider_x509_cert_url": settings.FIREBASE_AUTH_PROVIDER_X509_CERT_URL,
+                        "client_x509_cert_url": settings.FIREBASE_CLIENT_X509_CERT_URL
+                    }
+                    cred = credentials.Certificate(cred_dict)
+                    firebase_admin.initialize_app(cred)
+                    logger.info("✅ Firebase Admin SDK initialized with environment variables")
+                    return True
+                else:
+                    # No Firebase configuration available
+                    logger.warning("⚠️ No Firebase configuration found")
+                    logger.warning("⚠️ Firebase Admin SDK will not be available")
+                    logger.warning("⚠️ Using simplified token validation")
+                    return False
     except Exception as e:
         logger.warning(f"⚠️ Firebase Admin SDK initialization failed: {str(e)}")
         logger.warning("⚠️ Using simplified token validation for development")
