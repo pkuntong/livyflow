@@ -17,7 +17,8 @@ class Settings(BaseSettings):
     
     # Server
     HOST: str = os.getenv("HOST", "0.0.0.0")  # Optional, already safe
-    PORT: int = int(os.getenv("PORT", 8000))  # ✅ Use env PORT or default 8000
+    PORT: int = int(os.getenv("PORT") or 8000)
+    print(f"🚀 Running on {HOST}:{PORT}")
 
     
     # CORS
