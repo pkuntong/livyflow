@@ -1,7 +1,7 @@
 import os
-from typing import List, Optional
+from typing import List, Optional, Union
 from pydantic_settings import BaseSettings
-from pydantic import validator, ConfigDict
+from pydantic import field_validator, ConfigDict
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
@@ -17,9 +17,7 @@ class Settings(BaseSettings):
     
     # Server
     HOST: str = os.getenv("HOST", "0.0.0.0")  # Optional, already safe
-    PORT: int = int(os.getenv("PORT") or 8000)
-    print(f"🚀 Running on {HOST}:{PORT}")
-
+    PORT: int = 8000  # Default value, will be validated by field_validator
     
     # CORS
     ALLOWED_ORIGINS: List[str] = [
@@ -63,21 +61,56 @@ class Settings(BaseSettings):
     SECRET_KEY: str = "your-secret-key-change-in-production"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     
-    @validator('PLAID_ENV')
-    def validate_plaid_env(cls, v):
+    @field_validator('PORT', mode='before')
+    @classmethod
+    def validate_port(cls, v: Union[str, int, None]) -> int:
+        """Validate PORT field to handle empty strings and invalid integers."""
+        if v is None:
+            return 8000
+        
+        # Handle string values
+        if isinstance(v, str):
+            v = v.strip()
+            if not v:  # Empty string
+                return 8000
+            try:
+                port = int(v)
+            except ValueError:
+                print(f"⚠️  Invalid PORT value '{v}', defaulting to 8000")
+                return 8000
+        else:
+            # Handle int values
+            try:
+                port = int(v)
+            except (ValueError, TypeError):
+                print(f"⚠️  Invalid PORT value '{v}', defaulting to 8000")
+                return 8000
+        
+        # Validate port range
+        if port < 1 or port > 65535:
+            print(f"⚠️  PORT {port} out of range (1-65535), defaulting to 8000")
+            return 8000
+        
+        return port
+    
+    @field_validator('PLAID_ENV')
+    @classmethod
+    def validate_plaid_env(cls, v: str) -> str:
         valid_envs = ['sandbox', 'development', 'production']
         if v not in valid_envs:
             raise ValueError(f'PLAID_ENV must be one of {valid_envs}, got {v}')
         return v
     
-    @validator('PLAID_CLIENT_ID')
-    def validate_plaid_client_id(cls, v):
+    @field_validator('PLAID_CLIENT_ID')
+    @classmethod
+    def validate_plaid_client_id(cls, v: str) -> str:
         if not v or len(v.strip()) == 0:
             raise ValueError('PLAID_CLIENT_ID is required and cannot be empty')
         return v.strip()
     
-    @validator('PLAID_SECRET')
-    def validate_plaid_secret(cls, v):
+    @field_validator('PLAID_SECRET')
+    @classmethod
+    def validate_plaid_secret(cls, v: str) -> str:
         if not v or len(v.strip()) == 0:
             raise ValueError('PLAID_SECRET is required and cannot be empty')
         return v.strip()
@@ -96,6 +129,7 @@ try:
     print(f"🔒 Plaid Environment: {settings.PLAID_ENV}")
     print(f"🆔 Plaid Client ID: {settings.PLAID_CLIENT_ID[:8]}...")
     print(f"🔑 Plaid Secret: {settings.PLAID_SECRET[:8]}...")
+    print(f"🚀 Running on {settings.HOST}:{settings.PORT}")
 except Exception as e:
     print(f"❌ Configuration error: {e}")
     raise 
