@@ -115,51 +115,53 @@ export default function Dashboard({ accounts = [], transactions = [] }) {
   };
 
   return (
-    <div className="max-w-7xl mx-auto p-8">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">Financial Dashboard</h1>
+    <div className="w-full">
+      <div className="mb-6 lg:mb-8">
+        <h1 className="text-2xl lg:text-3xl font-bold text-gray-900">Financial Dashboard</h1>
         <p className="text-gray-600 mt-1">Welcome back! Here's your financial overview.</p>
       </div>
 
       {/* Financial Alerts */}
-      <Alerts />
+      <div className="mb-6 lg:mb-8">
+        <Alerts />
+      </div>
 
       {/* Financial Overview Cards */}
-      <div className="mb-8">
+      <div className="mb-6 lg:mb-8">
         <FinancialOverview accounts={accounts} transactions={allTransactions} />
       </div>
 
       {/* AI Insights */}
-      <div className="mb-8">
+      <div className="mb-6 lg:mb-8">
         <Insights />
       </div>
 
       {/* Monthly Insights Panel */}
-      <div className="mb-8">
+      <div className="mb-6 lg:mb-8">
         <MonthlyInsightsPanel />
       </div>
 
-      {/* Additional Dashboard Components */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-8">
+      {/* Additional Dashboard Components - Stack vertically on mobile, horizontal on md+ */}
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 lg:gap-6 mb-6 lg:mb-8">
         {/* Recent Transactions */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100">
-          <div className="p-6 flex items-center justify-between border-b border-gray-100">
-            <h2 className="text-xl font-semibold text-gray-900">Recent Transactions</h2>
-            <div className="flex items-center gap-2">
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 w-full">
+          <div className="p-4 lg:p-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-gray-100">
+            <h2 className="text-lg lg:text-xl font-semibold text-gray-900">Recent Transactions</h2>
+            <div className="flex items-center gap-2 flex-wrap">
               <button
                 onClick={handleRefresh}
                 disabled={isRefreshing || plaidTransactionsLoading}
-                className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="inline-flex items-center gap-1 px-2 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+                <RefreshCw className={`w-3 h-3 ${isRefreshing ? 'animate-spin' : ''}`} />
                 {isRefreshing ? 'Refreshing...' : 'Refresh'}
               </button>
-              <button className="inline-flex items-center justify-center rounded-lg bg-white px-4 py-2 text-sm font-medium shadow-sm border border-gray-200 hover:bg-gray-50">
-                + Add Transaction
+              <button className="inline-flex items-center justify-center rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                + Add
               </button>
             </div>
           </div>
-          <div className="p-6">
+          <div className="p-4 lg:p-6">
             {plaidTransactionsLoading && (
               <div className="flex items-center justify-center py-8">
                 <div className="flex items-center gap-2 text-blue-600">
@@ -191,12 +193,12 @@ export default function Dashboard({ accounts = [], transactions = [] }) {
               {allTransactions.length > 0 ? (
                 allTransactions.map((transaction, index) => (
                   <div key={transaction.id || transaction.transaction_id || index} className="flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                      <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center">
+                    <div className="flex items-center gap-4 min-w-0 flex-1">
+                      <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
                         <Receipt className="w-5 h-5 text-red-600" />
                       </div>
-                      <div>
-                        <p className="font-medium text-gray-900">
+                      <div className="min-w-0 flex-1">
+                        <p className="font-medium text-gray-900 truncate">
                           {transaction.name || transaction.description || transaction.merchant_name || 'Unknown Transaction'}
                         </p>
                         <div className="flex items-center gap-2">
@@ -207,13 +209,13 @@ export default function Dashboard({ accounts = [], transactions = [] }) {
                                 : transaction.category.replace(/_/g, ' ')}
                             </span>
                           )}
-                          <span className="text-sm text-gray-500">
+                          <span className="text-sm text-gray-500 truncate">
                             {transaction.isPlaidConnected ? 'Connected Account' : 'Unknown Account'}
                           </span>
                         </div>
                       </div>
                     </div>
-                    <div className="text-right">
+                    <div className="text-right flex-shrink-0 ml-2">
                       <p className={`font-semibold ${transaction.amount < 0 ? 'text-red-600' : 'text-green-600'}`}>
                         {transaction.amount < 0 ? '-' : '+'}${Math.abs(transaction.amount).toFixed(2)}
                       </p>
@@ -237,20 +239,26 @@ export default function Dashboard({ accounts = [], transactions = [] }) {
         </div>
 
         {/* Recurring Subscriptions */}
-        <RecurringSubscriptions />
+        <div className="w-full">
+          <RecurringSubscriptions />
+        </div>
 
         {/* Monthly Spending Summary Chart */}
-        <MonthlySpendingChart />
+        <div className="w-full">
+          <MonthlySpendingChart />
+        </div>
       </div>
 
-      {/* Second Row - Full Width Components */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+      {/* Second Row - Full Width Components - Stack vertically on mobile */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-6 mb-6 lg:mb-8">
         {/* Spending Trend Over Time Chart */}
-        <SpendingTrendChart />
+        <div className="w-full">
+          <SpendingTrendChart />
+        </div>
         
         {/* Placeholder for future component */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-          <h2 className="text-xl font-semibold text-gray-900 mb-4">Quick Actions</h2>
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 lg:p-6 w-full">
+          <h2 className="text-lg lg:text-xl font-semibold text-gray-900 mb-4">Quick Actions</h2>
           <div className="space-y-3">
             <button className="w-full text-left p-3 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors">
               <div className="font-medium text-gray-900">📊 View Analytics</div>
@@ -269,12 +277,12 @@ export default function Dashboard({ accounts = [], transactions = [] }) {
       </div>
 
       {/* Spending Trends Chart - Full Width */}
-      <div className="mb-8">
+      <div className="mb-6 lg:mb-8">
         <SpendingTrendsChart />
       </div>
 
       {/* Export Section */}
-      <div className="mb-8">
+      <div className="mb-6 lg:mb-8">
         <Export />
       </div>
     </div>

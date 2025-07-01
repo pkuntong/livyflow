@@ -13,6 +13,8 @@ import SignUp from './Pages/SignUp'
 import Login from './Pages/Login'
 import { LayoutGrid, Receipt, PiggyBank, CreditCard, LineChart, User } from 'lucide-react'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
+import { StagewiseToolbar } from '@stagewise/toolbar-react'
+import { ReactPlugin } from '@stagewise-plugins/react'
 
 // Protected Route component
 function ProtectedRoute({ children }) {
@@ -54,11 +56,15 @@ function AppRoutes() {
 
 function App() {
   return (
-    <Router>
-      <AuthProvider>
-        <AppRoutes />
-      </AuthProvider>
-    </Router>
+    <>
+      {/* Stagewise Toolbar (only shows in dev mode) */}
+      <StagewiseToolbar config={{ plugins: [ReactPlugin] }} />
+      <Router>
+        <AuthProvider>
+          <AppRoutes />
+        </AuthProvider>
+      </Router>
+    </>
   )
 }
 

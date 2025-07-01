@@ -34,7 +34,7 @@ function TimeSelector({ selectedPeriod, onPeriodChange }) {
         {selectedPeriod.label}
         <ChevronDown className="w-4 h-4" />
       </Menu.Button>
-      <Menu.Items className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-100 py-1 z-10">
+      <Menu.Items className="absolute left-0 right-0 mt-2 w-full bg-white rounded-lg shadow-lg border border-gray-100 py-1 z-10 min-w-[200px]">
         {TIME_PERIODS.map((period) => (
           <Menu.Item key={period.value}>
             {({ active }) => (
@@ -67,8 +67,8 @@ export default function Analytics() {
   };
 
   return (
-    <div className="p-8">
-      <div className="flex justify-between items-center mb-6">
+    <div className="w-full">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Financial Analytics</h1>
           <p className="text-gray-600">Insights into your spending patterns and financial trends</p>
@@ -80,15 +80,15 @@ export default function Analytics() {
       </div>
 
       {/* Empty State */}
-      <div className="text-center py-16">
-        <div className="w-20 h-20 bg-gradient-to-br from-blue-100 to-purple-100 rounded-full flex items-center justify-center mx-auto mb-6">
-          <BarChart3 className="w-10 h-10 text-blue-600" />
+      <div className="text-center py-8 lg:py-16">
+        <div className="w-16 h-16 lg:w-20 lg:h-20 bg-gradient-to-br from-blue-100 to-purple-100 rounded-full flex items-center justify-center mx-auto mb-4 lg:mb-6">
+          <BarChart3 className="w-8 h-8 lg:w-10 lg:h-10 text-blue-600" />
         </div>
-        <h3 className="text-xl font-semibold text-gray-900 mb-3">No Analytics Data Yet</h3>
-        <p className="text-gray-600 mb-6 max-w-md mx-auto">
+        <h3 className="text-lg lg:text-xl font-semibold text-gray-900 mb-3">No Analytics Data Yet</h3>
+        <p className="text-gray-600 mb-6 max-w-md mx-auto px-4">
           Connect your bank account and add some transactions to see detailed analytics about your spending patterns, income vs expenses, and financial trends.
         </p>
-        <div className="flex items-center justify-center gap-4 text-sm text-gray-500">
+        <div className="flex flex-col sm:flex-row items-center justify-center gap-4 text-sm text-gray-500 px-4">
           <div className="flex items-center gap-2">
             <LineChart className="w-4 h-4" />
             <span>Income vs Expenses</span>

@@ -106,7 +106,7 @@ export default function Reports() {
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Spending by Category</h3>
           {monthlyData.categories.length > 0 ? (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-6">
               <div className="h-64">
                 <ResponsiveContainer width="100%" height="100%">
                   <RechartsPieChart>
@@ -131,16 +131,16 @@ export default function Reports() {
               <div className="space-y-3">
                 {monthlyData.categories.map((cat, index) => (
                   <div key={cat.category} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full flex items-center justify-center text-lg">
+                    <div className="flex items-center gap-3 min-w-0 flex-1">
+                      <div className="w-8 h-8 rounded-full flex items-center justify-center text-lg flex-shrink-0">
                         {getCategoryIcon(cat.category)}
                       </div>
-                      <div>
-                        <p className="font-medium text-gray-900">{cat.category}</p>
+                      <div className="min-w-0 flex-1">
+                        <p className="font-medium text-gray-900 truncate">{cat.category}</p>
                         <p className="text-sm text-gray-600">{cat.percentage}% of total</p>
                       </div>
                     </div>
-                    <div className="text-right">
+                    <div className="text-right flex-shrink-0 ml-2">
                       <p className="font-semibold text-gray-900">${cat.amount.toFixed(2)}</p>
                     </div>
                   </div>
@@ -212,15 +212,15 @@ export default function Reports() {
         {/* Daily Breakdown */}
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Daily Breakdown</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 lg:gap-4">
             {weeklyData.daily_spending.map((day) => (
               <div key={day.date} className="p-4 bg-gray-50 rounded-lg">
                 <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-medium text-gray-900">{day.day}</p>
-                    <p className="text-sm text-gray-600">{day.date}</p>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium text-gray-900 truncate">{day.day}</p>
+                    <p className="text-sm text-gray-600 truncate">{day.date}</p>
                   </div>
-                  <div className="text-right">
+                  <div className="text-right flex-shrink-0 ml-2">
                     <p className="text-lg font-semibold text-gray-900">${day.amount.toFixed(2)}</p>
                   </div>
                 </div>

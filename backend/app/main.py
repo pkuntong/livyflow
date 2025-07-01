@@ -231,6 +231,47 @@ async def create_plaid_link_token(current_user: dict = Depends(get_current_user)
             detail=f"Failed to create Plaid link token: {str(e)}"
         )
 
+@app.get("/api/v1/plaid/link-token/test")
+async def create_plaid_link_token_test():
+    """
+    TEST ENDPOINT: Create a Plaid link token for testing without authentication.
+    WARNING: This is for development/testing only. Remove in production.
+    """
+    logger.info("🧪 TEST: Creating Plaid link token (no auth required)")
+    
+    # TEST USER ID - Replace with real auth logic in production
+    test_user_id = "test_user_123"
+    logger.info(f"🧪 Test User ID: {test_user_id}")
+    
+    try:
+        logger.info("🌐 Calling Plaid API to create link token...")
+        link_token = create_link_token(test_user_id)
+        
+        logger.info("✅ Test link token created successfully")
+        logger.info(f"🔗 Link token: {link_token[:20]}...")
+        
+        # Console log to confirm link token response (as requested)
+        print(f"[Plaid] TEST Link Token Response: {link_token[:20]}...")
+        
+        return {
+            "link_token": link_token,
+            "user_id": test_user_id,
+            "note": "This is a test endpoint - replace with real authentication in production"
+        }
+    except ValueError as e:
+        logger.error(f"❌ Configuration error: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Plaid configuration error: {str(e)}. Please check environment variables."
+        )
+    except Exception as e:
+        logger.error(f"❌ Failed to create test Plaid link token: {str(e)}")
+        logger.error(f"❌ Error type: {type(e).__name__}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to create test Plaid link token: {str(e)}"
+        )
+
 @app.post("/api/v1/plaid/exchange-token")
 async def exchange_plaid_token(
     request: PublicTokenRequest,
@@ -373,42 +414,161 @@ async def get_plaid_transactions(
     try:
         user_id = current_user["user_id"]
         
+        # Validate date parameters
+        if start_date:
+            try:
+                datetime.strptime(start_date, '%Y-%m-%d')
+                logger.info(f"✅ Start date is valid: {start_date}")
+            except ValueError as e:
+                logger.error(f"❌ Invalid start_date format: {start_date}")
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid start_date format. Expected YYYY-MM-DD, got: {start_date}"
+                )
+        
+        if end_date:
+            try:
+                datetime.strptime(end_date, '%Y-%m-%d')
+                logger.info(f"✅ End date is valid: {end_date}")
+            except ValueError as e:
+                logger.error(f"❌ Invalid end_date format: {end_date}")
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid end_date format. Expected YYYY-MM-DD, got: {end_date}"
+                )
+        
+        # Validate count parameter
+        if count and (count < 1 or count > 100):
+            logger.error(f"❌ Invalid count value: {count}")
+            raise HTTPException(
+                status_code=400,
+                detail="Count must be between 1 and 100"
+            )
+        
         # Get the access token for this user
+        logger.info(f"🔍 Looking up access token for user: {user_id}")
         access_token = get_access_token_for_user(user_id)
+        
         if not access_token:
             logger.error(f"❌ No access token found for user: {user_id}")
             raise HTTPException(
-                status_code=400,
+                status_code=404,
                 detail="No bank account connected. Please connect your bank account first."
             )
         
         logger.info(f"🔑 Access token found: {access_token[:20]}...")
+        
+        # Test Plaid client initialization
+        logger.info("🔧 Testing Plaid client initialization...")
+        try:
+            from app.plaid_client import get_plaid_client
+            plaid_client = get_plaid_client()
+            logger.info("✅ Plaid client initialized successfully")
+        except Exception as e:
+            logger.error(f"❌ Failed to initialize Plaid client: {str(e)}")
+            logger.error(f"❌ Error type: {type(e).__name__}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to initialize Plaid client: {str(e)}"
+            )
+        
+        # Call Plaid API with detailed error handling
         logger.info("🌐 Calling Plaid API to get transactions...")
-        result = get_transactions(access_token, start_date, end_date, count)
+        try:
+            from app.plaid_client import get_transactions
+            result = get_transactions(access_token, start_date, end_date, count)
+            logger.info("✅ Plaid API call successful")
+        except Exception as e:
+            logger.error(f"❌ Plaid API call failed: {str(e)}")
+            logger.error(f"❌ Error type: {type(e).__name__}")
+            
+            # Check for specific Plaid error types
+            if hasattr(e, 'body'):
+                try:
+                    error_data = e.body
+                    logger.error(f"❌ Plaid error body: {error_data}")
+                    
+                    # Extract Plaid error details
+                    if isinstance(error_data, dict):
+                        error_code = error_data.get('error_code', 'UNKNOWN')
+                        error_message = error_data.get('error_message', str(e))
+                        display_message = error_data.get('display_message', '')
+                        
+                        logger.error(f"❌ Plaid error_code: {error_code}")
+                        logger.error(f"❌ Plaid error_message: {error_message}")
+                        logger.error(f"❌ Plaid display_message: {display_message}")
+                        
+                        # Handle specific Plaid error codes
+                        if error_code == 'ITEM_LOGIN_REQUIRED':
+                            raise HTTPException(
+                                status_code=401,
+                                detail="Bank account requires re-authentication. Please reconnect your account."
+                            )
+                        elif error_code == 'INVALID_ACCESS_TOKEN':
+                            raise HTTPException(
+                                status_code=401,
+                                detail="Invalid access token. Please reconnect your bank account."
+                            )
+                        elif error_code == 'INVALID_REQUEST':
+                            raise HTTPException(
+                                status_code=400,
+                                detail=f"Invalid request to Plaid: {error_message}"
+                            )
+                        else:
+                            raise HTTPException(
+                                status_code=500,
+                                detail=f"Plaid API error ({error_code}): {error_message}"
+                            )
+                    else:
+                        raise HTTPException(
+                            status_code=500,
+                            detail=f"Plaid API error: {str(e)}"
+                        )
+                except Exception as parse_error:
+                    logger.error(f"❌ Failed to parse Plaid error: {str(parse_error)}")
+                    raise HTTPException(
+                        status_code=500,
+                        detail=f"Plaid API error: {str(e)}"
+                    )
+            else:
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Plaid API error: {str(e)}"
+                )
         
         logger.info("✅ Transactions fetched successfully")
         logger.info(f"💰 Transaction count: {len(result.transactions)}")
         logger.info(f"📊 Total transactions: {result.total_transactions}")
+        logger.info(f"🆔 Request ID: {result.request_id}")
         
         # Convert transactions to JSON-serializable format
+        logger.info("🔄 Converting transactions to JSON format...")
         transactions_data = []
-        for transaction in result.transactions:
-            transaction_data = {
-                "transaction_id": transaction.transaction_id,
-                "account_id": transaction.account_id,
-                "name": transaction.name,
-                "amount": transaction.amount,
-                "date": transaction.date,
-                "category": transaction.category,
-                "merchant_name": transaction.merchant_name,
-                "payment_channel": transaction.payment_channel,
-                "pending": transaction.pending,
-                "personal_finance_category": {
-                    "primary": transaction.personal_finance_category.primary,
-                    "detailed": transaction.personal_finance_category.detailed
-                } if transaction.personal_finance_category else None
-            }
-            transactions_data.append(transaction_data)
+        try:
+            for transaction in result.transactions:
+                transaction_data = {
+                    "transaction_id": transaction.transaction_id,
+                    "account_id": transaction.account_id,
+                    "name": transaction.name,
+                    "amount": transaction.amount,
+                    "date": transaction.date,
+                    "category": transaction.category,
+                    "merchant_name": transaction.merchant_name,
+                    "payment_channel": transaction.payment_channel,
+                    "pending": transaction.pending,
+                    "personal_finance_category": {
+                        "primary": transaction.personal_finance_category.primary,
+                        "detailed": transaction.personal_finance_category.detailed
+                    } if transaction.personal_finance_category else None
+                }
+                transactions_data.append(transaction_data)
+            logger.info(f"✅ Converted {len(transactions_data)} transactions")
+        except Exception as e:
+            logger.error(f"❌ Failed to convert transactions to JSON: {str(e)}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to process transaction data: {str(e)}"
+            )
         
         return {
             "transactions": transactions_data,
@@ -416,13 +576,17 @@ async def get_plaid_transactions(
             "request_id": result.request_id,
             "user_id": user_id
         }
+        
     except HTTPException:
+        # Re-raise HTTP exceptions as-is
         raise
     except Exception as e:
-        logger.error(f"❌ Failed to get transactions: {str(e)}")
+        logger.error(f"❌ Unexpected error in get_plaid_transactions: {str(e)}")
+        logger.error(f"❌ Error type: {type(e).__name__}")
+        logger.error(f"❌ Error traceback: ", exc_info=True)
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to get transactions: {str(e)}"
+            detail=f"Internal server error: {str(e)}"
         )
 
 @app.get("/api/v1/alerts")

@@ -371,22 +371,6 @@ const AccountManagement = () => {
           </div>
         </form>
       </div>
-
-      {/* Account Info Display */}
-      <div className="bg-gray-50 rounded-lg p-6">
-        <div className="flex items-center space-x-3 mb-4">
-          <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center">
-            <span className="text-gray-600 text-sm">ℹ️</span>
-          </div>
-          <h4 className="text-sm font-medium text-gray-900">Account Details</h4>
-        </div>
-        <div className="space-y-2 text-sm text-gray-600">
-          <p><span className="font-medium">User ID:</span> {currentUser.uid}</p>
-          <p><span className="font-medium">Email Verified:</span> {currentUser.emailVerified ? 'Yes' : 'No'}</p>
-          <p><span className="font-medium">Account Created:</span> {currentUser.metadata.creationTime ? new Date(currentUser.metadata.creationTime).toLocaleDateString() : 'Unknown'}</p>
-          <p><span className="font-medium">Last Sign In:</span> {currentUser.metadata.lastSignInTime ? new Date(currentUser.metadata.lastSignInTime).toLocaleDateString() : 'Unknown'}</p>
-        </div>
-      </div>
     </div>
   );
 };

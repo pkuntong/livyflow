@@ -13,7 +13,7 @@ const Toast = ({ message, type = 'info', duration = 5000, onClose }) => {
   }, [duration, onClose]);
 
   const getToastStyles = () => {
-    const baseStyles = "fixed top-4 right-4 z-50 max-w-sm w-full p-4 rounded-lg shadow-lg transform transition-all duration-300";
+    const baseStyles = "w-full p-4 rounded-lg shadow-lg transform transition-all duration-300";
     
     switch (type) {
       case 'success':

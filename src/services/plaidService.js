@@ -30,22 +30,48 @@ class PlaidService {
     }
   }
 
-  // Fetch link token from backend
-  async getLinkToken() {
+  // Check if backend is available
+  async checkBackendHealth() {
     try {
-      console.log("🌐 Making request to:", `${this.baseURL}/api/v1/plaid/link-token`);
-      
-      const token = await this.getAuthToken();
-      if (!token) {
-        throw new Error('No authentication token found - user must be signed in');
+      const response = await axios.get(`${this.baseURL}/api/health`, {
+        timeout: 5000 // 5 second timeout
+      });
+      return response.status === 200;
+    } catch (error) {
+      console.error("❌ Backend health check failed:", error.message);
+      return false;
+    }
+  }
+
+  // Fetch link token from backend (with fallback to test endpoint)
+  async getLinkToken(useTestEndpoint = false) {
+    try {
+      // Check if backend is available
+      const backendAvailable = await this.checkBackendHealth();
+      if (!backendAvailable) {
+        throw new Error('Backend server is not available. Please ensure the backend is running on localhost:8000');
       }
 
-      const response = await axios.get(`${this.baseURL}/api/v1/plaid/link-token`, {
+      const endpoint = useTestEndpoint ? '/api/v1/plaid/link-token/test' : '/api/v1/plaid/link-token';
+      console.log("🌐 Making request to:", `${this.baseURL}${endpoint}`);
+      
+      let config = {
         headers: {
-          'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
-      });
+        timeout: 10000 // 10 second timeout
+      };
+
+      // Only add auth header if not using test endpoint
+      if (!useTestEndpoint) {
+        const token = await this.getAuthToken();
+        if (!token) {
+          throw new Error('No authentication token found - user must be signed in');
+        }
+        config.headers['Authorization'] = `Bearer ${token}`;
+      }
+
+      const response = await axios.get(`${this.baseURL}${endpoint}`, config);
 
       console.log("📡 Response status:", response.status);
       console.log("📦 Full response data:", response.data);
@@ -54,6 +80,21 @@ class PlaidService {
       return response.data.link_token;
     } catch (error) {
       console.error('❌ Error fetching link token:', error);
+      
+      // Handle specific error cases
+      if (error.code === 'ECONNREFUSED' || error.message.includes('Backend server is not available')) {
+        throw new Error('Backend server is not running. Please start the backend server on localhost:8000');
+      }
+      
+      if (error.response?.status === 500) {
+        console.error('❌ Backend error response data:', error.response?.data);
+        throw new Error(`Backend error: ${error.response?.data?.detail || 'Unknown server error'}`);
+      }
+      
+      if (error.response?.status === 401) {
+        throw new Error('Authentication failed. Please sign in again.');
+      }
+      
       console.error('❌ Error response data:', error.response?.data);
       console.error('❌ Error status:', error.response?.status);
       console.error('❌ Error message:', error.message);
@@ -82,6 +123,7 @@ class PlaidService {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
+        timeout: 10000 // 10 second timeout
       });
 
       console.log("📡 Response status:", response.status);
@@ -91,6 +133,17 @@ class PlaidService {
       return response.data;
     } catch (error) {
       console.error('❌ Error exchanging public token:', error);
+      
+      // Handle specific error cases
+      if (error.code === 'ECONNREFUSED') {
+        throw new Error('Backend server is not running. Please start the backend server on localhost:8000');
+      }
+      
+      if (error.response?.status === 500) {
+        console.error('❌ Backend error response data:', error.response?.data);
+        throw new Error(`Backend error: ${error.response?.data?.detail || 'Unknown server error'}`);
+      }
+      
       console.error('❌ Error response data:', error.response?.data);
       console.error('❌ Error status:', error.response?.status);
       console.error('❌ Error message:', error.message);
@@ -113,6 +166,7 @@ class PlaidService {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
+        timeout: 10000 // 10 second timeout
       });
 
       console.log("📡 Response status:", response.status);
@@ -122,6 +176,16 @@ class PlaidService {
       return response.data;
     } catch (error) {
       console.error('❌ Error fetching accounts:', error);
+      
+      // Handle specific error cases
+      if (error.code === 'ECONNREFUSED') {
+        throw new Error('Backend server is not running. Please start the backend server on localhost:8000');
+      }
+      
+      if (error.response?.status === 400) {
+        throw new Error('No bank account connected. Please connect your bank account first.');
+      }
+      
       console.error('❌ Error response data:', error.response?.data);
       console.error('❌ Error status:', error.response?.status);
       console.error('❌ Error message:', error.message);
@@ -155,6 +219,7 @@ class PlaidService {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
+        timeout: 15000 // 15 second timeout for transactions
       });
 
       console.log("📡 Response status:", response.status);
@@ -164,6 +229,16 @@ class PlaidService {
       return response.data;
     } catch (error) {
       console.error('❌ Error fetching transactions:', error);
+      
+      // Handle specific error cases
+      if (error.code === 'ECONNREFUSED') {
+        throw new Error('Backend server is not running. Please start the backend server on localhost:8000');
+      }
+      
+      if (error.response?.status === 400) {
+        throw new Error('No bank account connected. Please connect your bank account first.');
+      }
+      
       console.error('❌ Error response data:', error.response?.data);
       console.error('❌ Error status:', error.response?.status);
       console.error('❌ Error message:', error.message);

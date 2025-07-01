@@ -43,13 +43,13 @@ function CategoryTag({ category }) {
 function FilterDropdown({ options, value, onChange, buttonClassName }) {
   return (
     <Menu as="div" className="relative inline-block text-left">
-      <Menu.Button className={`inline-flex justify-between items-center w-48 ${buttonClassName}`}>
+      <Menu.Button className={`inline-flex justify-between items-center w-full ${buttonClassName}`}>
         {options.find(opt => opt.value === value)?.label || 'Select option'}
         <svg className="w-5 h-5 ml-2 -mr-1" viewBox="0 0 20 20" fill="currentColor">
           <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
         </svg>
       </Menu.Button>
-      <Menu.Items className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-lg border border-gray-100 py-1 z-10">
+      <Menu.Items className="absolute left-0 right-0 mt-2 w-full bg-white rounded-lg shadow-lg border border-gray-100 py-1 z-50 max-h-60 overflow-auto">
         {options.map((option) => (
           <Menu.Item key={option.value}>
             {({ active }) => (
@@ -216,16 +216,16 @@ export default function Transactions() {
   };
 
   return (
-    <div className="p-8">
+    <div className="w-full">
       {/* Header */}
-      <div className="flex justify-between items-center mb-6">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Transactions</h1>
           <p className="text-gray-600">Track and manage your financial transactions</p>
         </div>
         <button
           onClick={() => setIsModalOpen(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+          className="flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors w-full sm:w-auto"
         >
           <Plus className="w-4 h-4" />
           Add Transaction
@@ -233,15 +233,15 @@ export default function Transactions() {
       </div>
 
       {/* Filters */}
-      <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100 mb-6">
+      <div className="bg-white rounded-xl p-4 lg:p-6 shadow-sm border border-gray-100 mb-6 w-full">
         <div className="flex items-center gap-4 mb-4">
           <Filter className="w-5 h-5 text-gray-500" />
           <h3 className="text-lg font-semibold text-gray-900">Filters</h3>
         </div>
         
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 lg:gap-4">
           {/* Search */}
-          <div className="relative">
+          <div className="relative sm:col-span-2 lg:col-span-1">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input
               type="text"
@@ -269,7 +269,7 @@ export default function Transactions() {
           />
 
           {/* Date Range */}
-          <div className="flex gap-2">
+          <div className="flex gap-2 sm:col-span-2 lg:col-span-1">
             <input
               type="date"
               placeholder="Start date"
@@ -287,7 +287,7 @@ export default function Transactions() {
           </div>
 
           {/* Amount Range */}
-          <div className="flex gap-2">
+          <div className="flex gap-2 sm:col-span-2 lg:col-span-1">
             <input
               type="number"
               placeholder="Min amount"
@@ -307,7 +307,7 @@ export default function Transactions() {
           {/* Clear Filters */}
           <button
             onClick={clearAllFilters}
-            className="px-4 py-2 text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+            className="px-4 py-2 text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors sm:col-span-2 lg:col-span-1"
           >
             Clear All
           </button>
@@ -315,14 +315,14 @@ export default function Transactions() {
       </div>
 
       {/* Transactions List */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100">
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 w-full">
         {isLoading ? (
-          <div className="p-8 text-center">
+          <div className="p-4 lg:p-8 text-center">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
             <p className="text-gray-600">Loading transactions...</p>
           </div>
         ) : allTransactions.length === 0 ? (
-          <div className="p-8 text-center">
+          <div className="p-4 lg:p-8 text-center">
             <div className="w-16 h-16 bg-gradient-to-br from-blue-100 to-purple-100 rounded-full flex items-center justify-center mx-auto mb-4">
               <Receipt className="w-8 h-8 text-blue-600" />
             </div>
@@ -339,7 +339,7 @@ export default function Transactions() {
             </button>
           </div>
         ) : filteredTransactions.length === 0 ? (
-          <div className="p-8 text-center">
+          <div className="p-4 lg:p-8 text-center">
             <div className="w-16 h-16 bg-gradient-to-br from-gray-100 to-gray-200 rounded-full flex items-center justify-center mx-auto mb-4">
               <Search className="w-8 h-8 text-gray-500" />
             </div>
@@ -356,7 +356,7 @@ export default function Transactions() {
           </div>
         ) : (
           <div className="overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-100">
+            <div className="px-4 lg:px-6 py-4 border-b border-gray-100">
               <p className="text-sm text-gray-600">
                 Showing {filteredTransactions.length} of {allTransactions.length} transactions
               </p>
@@ -365,43 +365,41 @@ export default function Transactions() {
               {filteredTransactions.map((transaction) => (
                 <div
                   key={transaction.id}
-                  className="px-6 py-4 hover:bg-gray-50 transition-colors cursor-pointer"
+                  className="px-4 lg:px-6 py-4 hover:bg-gray-50 transition-colors cursor-pointer"
                   onClick={() => handleEditTransaction(transaction)}
                 >
                   <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                      <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                    <div className="flex items-center gap-4 min-w-0 flex-1">
+                      <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${
                         transaction.amount < 0 ? 'bg-red-100' : 'bg-green-100'
                       }`}>
                         <ArrowDownLeft className={`w-5 h-5 ${
                           transaction.amount < 0 ? 'text-red-600' : 'text-green-600'
                         }`} />
                       </div>
-                      <div>
-                        <h4 className="font-medium text-gray-900">
+                      <div className="min-w-0 flex-1">
+                        <h4 className="font-medium text-gray-900 truncate">
                           {transaction.description || transaction.name || 'Unknown Transaction'}
                         </h4>
-                        <div className="flex items-center gap-2 text-sm text-gray-600">
-                          <span>{formatDate(transaction.date)}</span>
+                        <div className="flex items-center gap-2 text-sm text-gray-600 flex-wrap">
+                          <span className="truncate">{formatDate(transaction.date)}</span>
                           <span>•</span>
-                          <span>Account {transaction.account_id || 'Unknown'}</span>
+                          <span className="truncate">Account {transaction.account_id || 'Unknown'}</span>
                           {transaction.notes && (
                             <>
                               <span>•</span>
-                              <span>{transaction.notes}</span>
+                              <span className="truncate">{transaction.notes}</span>
                             </>
                           )}
                         </div>
                       </div>
                     </div>
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-3 flex-shrink-0 ml-2">
                       {transaction.category && (
                         <CategoryTag category={transaction.category} />
                       )}
                       <div className="text-right">
-                        <p className={`font-semibold ${
-                          transaction.amount < 0 ? 'text-red-600' : 'text-green-600'
-                        }`}>
+                        <p className={`font-semibold ${transaction.amount < 0 ? 'text-red-600' : 'text-green-600'}`}>
                           {transaction.amount < 0 ? '-' : '+'}{formatCurrency(transaction.amount)}
                         </p>
                       </div>
@@ -423,7 +421,6 @@ export default function Transactions() {
         }}
         onSubmit={handleAddTransaction}
         transaction={selectedTransaction}
-        accounts={[]}
       />
     </div>
   );
