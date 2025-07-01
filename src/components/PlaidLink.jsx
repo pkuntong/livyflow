@@ -46,14 +46,28 @@ const PlaidLink = ({ onSuccess, onExit, children }) => {
     try {
       console.log("🔄 Plaid link successful, exchanging public token...");
       console.log("📦 Metadata:", metadata);
+      console.log("🔑 Public token:", public_token ? "Present" : "Missing");
+      
+      // Validate public token
+      if (!public_token) {
+        throw new Error("No public token received from Plaid");
+      }
       
       // Exchange public token for access token
       const result = await plaidService.exchangePublicToken(public_token);
       console.log("✅ Token exchange successful:", result);
       
-      // Call the success callback
+      // Validate the result
+      if (!result || !result.access_token) {
+        throw new Error("Invalid response from token exchange");
+      }
+      
+      // Call the success callback with the correct parameters
       if (onSuccess) {
-        onSuccess(public_token, metadata, result);
+        console.log("📞 Calling parent onSuccess callback...");
+        onSuccess(result, metadata);
+      } else {
+        console.warn("⚠️ No onSuccess callback provided");
       }
       
       toast.success('Bank account connected successfully!');
@@ -65,6 +79,10 @@ const PlaidLink = ({ onSuccess, onExit, children }) => {
         toast.error('Backend server is not running. Please start the backend server and try again.');
       } else if (error.message.includes('Backend error')) {
         toast.error('Backend configuration error. Please check the server logs.');
+      } else if (error.message.includes('No public token')) {
+        toast.error('Plaid connection failed: No token received. Please try again.');
+      } else if (error.message.includes('Invalid response')) {
+        toast.error('Plaid connection failed: Invalid server response. Please try again.');
       } else {
         toast.error(`Failed to connect bank account: ${error.message}`);
       }

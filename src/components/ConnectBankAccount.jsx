@@ -25,6 +25,8 @@ const ConnectBankAccount = () => {
     console.log("🔑 Access token:", result.access_token);
     console.log("🆔 Item ID:", result.item_id);
     console.log("👤 User ID:", result.user_id);
+    console.log("💾 Stored status:", result.stored);
+    console.log("📝 Message:", result.message);
     
     // Add the connected account to the list
     const newAccount = {
@@ -48,6 +50,9 @@ const ConnectBankAccount = () => {
     
     // You can store this data in your backend or state management
     console.log("💾 Ready to store account data in backend/database");
+    
+    // Show success toast
+    console.log("🎉 Plaid connection completed successfully!");
   };
 
   const handlePlaidExit = (err, metadata) => {
