@@ -3,8 +3,10 @@ import { auth } from '../firebase';
 
 class PlaidService {
   constructor() {
-    // Use environment variable for API URL, fallback to localhost for development
-    this.baseURL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+    if (!import.meta.env.VITE_API_URL) {
+      throw new Error("Missing VITE_API_URL environment variable");
+    }
+    this.baseURL = import.meta.env.VITE_API_URL;
     console.log("🔧 PlaidService initialized with API URL:", this.baseURL);
     console.log("🌍 Environment:", import.meta.env.VITE_ENVIRONMENT || 'development');
   }
