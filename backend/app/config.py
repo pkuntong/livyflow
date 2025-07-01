@@ -24,14 +24,16 @@ class Settings(BaseSettings):
         "http://localhost:5173",
         "http://localhost:3000",
         "http://127.0.0.1:5173",
-        "http://127.0.0.1:3000"
+        "http://127.0.0.1:3000",
+        "https://livyflow.com",  # Production frontend domain
+        "https://www.livyflow.com"  # Production frontend domain with www
     ]
     
-    # Add production origins if in production
+    # Add additional production origins from environment variable if in production
     if ENVIRONMENT == "production":
         PRODUCTION_ORIGINS = os.getenv("ALLOWED_ORIGINS", "").split(",")
         if PRODUCTION_ORIGINS and PRODUCTION_ORIGINS[0]:
-            ALLOWED_ORIGINS.extend(PRODUCTION_ORIGINS)
+            ALLOWED_ORIGINS.extend([origin.strip() for origin in PRODUCTION_ORIGINS if origin.strip()])
     
     # Firebase Configuration
     FIREBASE_PROJECT_ID: Optional[str] = None
