@@ -40,4 +40,10 @@ if (missingVars.length > 0) {
   console.log('✅ All required Firebase environment variables are present');
 }
 
-console.log('=== End Environment Variables Test ==='); 
+console.log('=== End Environment Variables Test ===');
+
+// Test environment variables
+console.log("🔧 Environment Variables Test:");
+console.log("🌍 VITE_ENVIRONMENT:", import.meta.env.VITE_ENVIRONMENT);
+console.log("🔗 VITE_API_URL:", import.meta.env.VITE_API_URL);
+console.log("🔗 Fallback API URL:", import.meta.env.VITE_API_URL || 'http://localhost:8000'); 

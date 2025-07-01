@@ -22,8 +22,13 @@ export default defineConfig({
     },
   },
   server: {
+    // Keep proxy for development as fallback, but services now use environment variables
     proxy: {
-      '/api': 'http://localhost:8000',
+      '/api': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+        secure: false,
+      },
     },
   },
 }) 

@@ -7,6 +7,8 @@
     "dev": "vite --open",
     "dev-full": "concurrently \"npm run dev-client\" \"npm run dev-server\"",
     "build": "vite build",
+    "build:production": "vite build --mode production",
+    "build:staging": "vite build --mode staging",
     "lint": "eslint . --ext js,jsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview",
     "dev-client": "next dev",       
