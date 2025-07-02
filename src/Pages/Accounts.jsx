@@ -273,8 +273,13 @@ export default function Accounts() {
       return;
     }
 
-    fetchPlaidAccounts();
-  }, [user]);
+    // Only fetch accounts if we have a link token (indicating Plaid is set up)
+    if (linkToken) {
+      fetchPlaidAccounts();
+    } else {
+      console.log("💡 No link token available yet, skipping accounts fetch");
+    }
+  }, [user, linkToken]);
 
   // Test Plaid link token fetch on component mount only if user is signed in
   useEffect(() => {
@@ -360,8 +365,9 @@ export default function Accounts() {
       
       // Handle specific error cases
       if (error.response?.status === 400) {
-        // No bank account connected
-        setPlaidAccountsError("No bank account connected. Please connect your bank account first.");
+        // No bank account connected - this is expected for new users
+        console.log("💡 No bank account connected yet - this is normal for new users");
+        setPlaidAccountsError(null); // Don't show error for expected state
         setPlaidAccounts([]);
       } else if (error.response?.status === 401) {
         // Authentication error

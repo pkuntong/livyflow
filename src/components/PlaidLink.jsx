@@ -43,34 +43,36 @@ const PlaidLink = ({ onSuccess, onExit, children }) => {
   };
 
   const onPlaidSuccess = async (public_token, metadata) => {
+    console.log("✅ Bank linked!", metadata);
+
     try {
-      console.log("🔄 Plaid link successful, exchanging public token...");
-      console.log("📦 Metadata:", metadata);
-      console.log("🔑 Public token:", public_token ? "Present" : "Missing");
-      
-      // Validate public token
-      if (!public_token) {
-        throw new Error("No public token received from Plaid");
-      }
-      
-      // Exchange public token for access token
-      const result = await plaidService.exchangePublicToken(public_token);
-      console.log("✅ Token exchange successful:", result);
-      
-      // Validate the result
-      if (!result || !result.access_token) {
-        throw new Error("Invalid response from token exchange");
-      }
-      
-      // Call the success callback with the correct parameters
-      if (onSuccess) {
-        console.log("📞 Calling parent onSuccess callback...");
-        onSuccess(result, metadata);
+      // Now I must exchange the public_token with your backend:
+      const response = await fetch("http://localhost:8000/api/v1/plaid/exchange-token", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ public_token, user_id: "CURRENT_USER_ID" }) // use your real user id
+      });
+
+      if (response.ok) {
+        console.log("✅ Access token saved successfully");
+        const result = await response.json();
+        
+        // Call the success callback with the correct parameters
+        if (onSuccess) {
+          console.log("📞 Calling parent onSuccess callback...");
+          onSuccess(result, metadata);
+        } else {
+          console.warn("⚠️ No onSuccess callback provided");
+        }
+        
+        toast.success('Bank account connected successfully!');
       } else {
-        console.warn("⚠️ No onSuccess callback provided");
+        console.error("❌ Failed to save access token");
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Failed to save access token');
       }
-      
-      toast.success('Bank account connected successfully!');
     } catch (error) {
       console.error("❌ Failed to exchange public token:", error);
       

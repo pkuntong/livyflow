@@ -5,16 +5,16 @@
   "type": "module",
   "scripts": {
     "dev": "vite --open",
-    "dev-full": "concurrently \"npm run dev-client\" \"npm run dev-server\"",
+    "dev-full": "concurrently \"npm run dev\" \"npm run dev-backend\"",
+    "dev-backend": "cd backend && python run.py",
+    "dev-backend-reload": "cd backend && uvicorn app.main:app --reload --host 0.0.0.0 --port 8000",
     "build": "vite build",
     "build:production": "vite build --mode production",
     "build:staging": "vite build --mode staging",
     "lint": "eslint . --ext js,jsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview",
-    "dev-client": "next dev",       
-    "dev-server": "uvicorn app.main:app --reload --port 8000"
+    "start": "npm run dev-full"
   },
-
   "dependencies": {
     "@headlessui/react": "^2.2.4",
     "@stagewise-plugins/react": "^0.4.9",
