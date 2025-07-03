@@ -43,7 +43,18 @@ if (missingVars.length > 0) {
 console.log('=== End Environment Variables Test ===');
 
 // Test environment variables
-console.log("🔧 Environment Variables Test:");
-console.log("🌍 VITE_ENVIRONMENT:", import.meta.env.VITE_ENVIRONMENT);
-console.log("🔗 VITE_API_URL:", import.meta.env.VITE_API_URL);
-console.log("🔗 Fallback API URL:", import.meta.env.VITE_API_URL || 'http://localhost:8000'); 
+console.log("🔍 Environment Variables Test:");
+console.log("VITE_API_URL:", import.meta.env.VITE_API_URL);
+console.log("VITE_ENVIRONMENT:", import.meta.env.VITE_ENVIRONMENT);
+console.log("🔗 Current API URL:", import.meta.env.VITE_API_URL || 'http://localhost:8000');
+console.log("🌍 Environment:", import.meta.env.VITE_ENVIRONMENT || 'development');
+
+// Test if backend is reachable
+fetch('http://localhost:8000/api/health')
+  .then(response => response.json())
+  .then(data => {
+    console.log("✅ Backend health check successful:", data);
+  })
+  .catch(error => {
+    console.error("❌ Backend health check failed:", error);
+  }); 

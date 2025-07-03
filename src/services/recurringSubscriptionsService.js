@@ -1,7 +1,10 @@
 import { auth } from '../firebase';
 
-const API_BASE_URL = `${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/v1`;
+// In development, use the Vite proxy to avoid CORS issues
+const isDev = import.meta.env.DEV;
+const API_BASE_URL = isDev ? '/api/v1' : `${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/v1`;
 console.log("🔧 RecurringSubscriptionsService initialized with API URL:", API_BASE_URL);
+console.log("🔧 Development mode:", isDev);
 
 // Helper function to get auth token
 const getAuthToken = async () => {

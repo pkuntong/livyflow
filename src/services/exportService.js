@@ -3,9 +3,11 @@ import { auth } from '../firebase';
 
 class ExportService {
   constructor() {
-    // Use environment variable for API URL, fallback to localhost for development
-    this.baseURL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+    // In development, use the Vite proxy to avoid CORS issues
+    const isDev = import.meta.env.DEV;
+    this.baseURL = isDev ? '' : (import.meta.env.VITE_API_URL || 'http://localhost:8000');
     console.log("🔧 ExportService initialized with API URL:", this.baseURL);
+    console.log("🔧 Development mode:", isDev);
   }
 
   // Get Firebase ID token for authentication
