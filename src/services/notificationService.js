@@ -91,10 +91,11 @@ export const markNotificationRead = async (notificationId) => {
 // Delete a notification
 export const deleteNotification = async (notificationId) => {
   try {
+    const token = await getAuthToken();
     const response = await fetch(`${API_BASE_URL}/notifications/${notificationId}`, {
       method: 'DELETE',
       headers: {
-        'Authorization': `Bearer ${getAuthToken()}`,
+        'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json',
       },
     });
