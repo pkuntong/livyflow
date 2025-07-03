@@ -20,8 +20,9 @@ const PlaidLink = ({ onSuccess, onExit, children }) => {
     try {
       console.log("🔄 Generating Plaid link token...");
       
-      // Use test endpoint for easier development (no auth required)
-      const token = await plaidService.getLinkToken(true);
+      // Use test endpoint only in development
+      const isDev = import.meta.env.DEV;
+      const token = await plaidService.getLinkToken(isDev);
       console.log("✅ Link token generated:", token ? "Success" : "Failed");
       
       setLinkToken(token);
