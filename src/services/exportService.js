@@ -5,7 +5,15 @@ class ExportService {
   constructor() {
     // In development, use the Vite proxy to avoid CORS issues
     const isDev = import.meta.env.DEV;
-    this.baseURL = isDev ? '' : (import.meta.env.VITE_API_URL || 'http://localhost:8000');
+    
+    // Use production URL directly if not in development
+    if (isDev) {
+      this.baseURL = ''; // Use Vite proxy
+    } else {
+      // Production - use the actual backend URL
+      this.baseURL = 'https://livyflow.onrender.com';
+    }
+    
     console.log("🔧 ExportService initialized with API URL:", this.baseURL);
     console.log("🔧 Development mode:", isDev);
   }

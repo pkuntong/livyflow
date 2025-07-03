@@ -5,18 +5,23 @@ class PlaidService {
   constructor() {
     // In development, use the Vite proxy to avoid CORS issues
     const isDev = import.meta.env.DEV;
-    this.baseURL = isDev ? '' : (import.meta.env.VITE_API_URL || 'http://localhost:8000');
+    
+    // Use production URL directly if not in development
+    if (isDev) {
+      this.baseURL = ''; // Use Vite proxy
+    } else {
+      // Production - use the actual backend URL
+      this.baseURL = 'https://livyflow.onrender.com';
+    }
+    
     console.log("🔧 PlaidService initialized with API URL:", this.baseURL);
     console.log("🌍 Environment:", import.meta.env.VITE_ENVIRONMENT || 'development');
     console.log("🔧 Development mode:", isDev);
     
-    // Log environment variable status for debugging
-    if (!import.meta.env.VITE_API_URL && !isDev) {
-      console.warn("⚠️ VITE_API_URL not found, using fallback URL:", this.baseURL);
-    } else if (isDev) {
+    if (isDev) {
       console.log("✅ Using Vite proxy in development mode");
     } else {
-      console.log("✅ VITE_API_URL found:", import.meta.env.VITE_API_URL);
+      console.log("✅ Using production backend URL:", this.baseURL);
     }
   }
 
