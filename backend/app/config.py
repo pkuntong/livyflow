@@ -35,6 +35,15 @@ class Settings(BaseSettings):
         if PRODUCTION_ORIGINS and PRODUCTION_ORIGINS[0]:
             ALLOWED_ORIGINS.extend([origin.strip() for origin in PRODUCTION_ORIGINS if origin.strip()])
     
+    # Trusted Hosts for security
+    ALLOWED_HOSTS: List[str] = [
+        "localhost",
+        "127.0.0.1",
+        "livyflow.com",
+        "www.livyflow.com",
+        "livyflow.onrender.com"
+    ]
+    
     # Firebase Configuration
     FIREBASE_PROJECT_ID: Optional[str] = None
     FIREBASE_PRIVATE_KEY_ID: Optional[str] = None
@@ -60,7 +69,7 @@ class Settings(BaseSettings):
     FROM_EMAIL: str = "noreply@livyflow.com"
     
     # Security
-    SECRET_KEY: str = "your-secret-key-change-in-production"
+    SECRET_KEY: str
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     
     @field_validator('PORT', mode='before')
@@ -78,19 +87,16 @@ class Settings(BaseSettings):
             try:
                 port = int(v)
             except ValueError:
-                print(f"⚠️  Invalid PORT value '{v}', defaulting to 8000")
                 return 8000
         else:
             # Handle int values
             try:
                 port = int(v)
             except (ValueError, TypeError):
-                print(f"⚠️  Invalid PORT value '{v}', defaulting to 8000")
                 return 8000
         
         # Validate port range
         if port < 1 or port > 65535:
-            print(f"⚠️  PORT {port} out of range (1-65535), defaulting to 8000")
             return 8000
         
         return port
@@ -117,6 +123,15 @@ class Settings(BaseSettings):
             raise ValueError('PLAID_SECRET is required and cannot be empty')
         return v.strip()
     
+    @field_validator('SECRET_KEY')
+    @classmethod
+    def validate_secret_key(cls, v: str) -> str:
+        if not v or len(v.strip()) == 0:
+            raise ValueError('SECRET_KEY is required and cannot be empty')
+        if len(v.strip()) < 32:
+            raise ValueError('SECRET_KEY must be at least 32 characters long')
+        return v.strip()
+    
     def is_production(self) -> bool:
         return self.ENVIRONMENT == "production"
     
@@ -126,12 +141,5 @@ class Settings(BaseSettings):
 # Create settings instance with validation
 try:
     settings = Settings()
-    print(f"✅ Configuration loaded successfully")
-    print(f"🌍 Environment: {settings.ENVIRONMENT}")
-    print(f"🔒 Plaid Environment: {settings.PLAID_ENV}")
-    print(f"🆔 Plaid Client ID: {settings.PLAID_CLIENT_ID[:8]}...")
-    print(f"🔑 Plaid Secret: {settings.PLAID_SECRET[:8]}...")
-    print(f"🚀 Running on {settings.HOST}:{settings.PORT}")
 except Exception as e:
-    print(f"❌ Configuration error: {e}")
     raise 

@@ -16,8 +16,8 @@ from app.config import settings
 # Configure logging
 logger = logging.getLogger(__name__)
 
-# Simple in-memory storage for access tokens (for development)
-# In production, this should be replaced with a proper database
+# SECURITY WARNING: In-memory storage is NOT secure for production
+# In production, use a secure database with encryption at rest
 access_token_storage = {}
 
 def store_access_token(user_id: str, access_token: str, item_id: str):
@@ -27,7 +27,7 @@ def store_access_token(user_id: str, access_token: str, item_id: str):
         'item_id': item_id,
         'stored_at': datetime.now().isoformat()
     }
-    logger.info(f"💾 Access token stored for user: {user_id}")
+    logger.info(f"Access token stored for user: {user_id[:8]}...")
 
 def get_access_token_for_user(user_id: str):
     """Get access token for a user (from in-memory storage for development)."""
@@ -35,7 +35,7 @@ def get_access_token_for_user(user_id: str):
         return None
     
     stored_data = access_token_storage[user_id]
-    logger.info(f"🔑 Retrieved access token for user: {user_id}")
+    logger.info(f"Retrieved access token for user: {user_id[:8]}...")
     return stored_data['access_token']
 
 def get_plaid_client():
@@ -71,11 +71,10 @@ def get_plaid_client():
     # Safety log to confirm the environment
     logger.info(f"🔒 [Plaid] Running in: {plaid_env}")
     
-    # Console log to confirm environment and credentials (as requested)
-    print(f"[Plaid] ENV={environment} | CLIENT_ID={settings.PLAID_CLIENT_ID[:6]}... | SECRET={settings.PLAID_SECRET[:6]}...")
+
     
-    logger.info(f"🆔 Client ID: {settings.PLAID_CLIENT_ID[:10]}...")
-    logger.info(f"🔑 Secret length: {len(settings.PLAID_SECRET)} characters")
+    logger.info(f"Client ID: {settings.PLAID_CLIENT_ID[:8]}...")
+    logger.info(f"Secret configured: {'Yes' if settings.PLAID_SECRET else 'No'}")
     
     try:
         logger.info("🔧 Creating Plaid configuration...")
@@ -133,8 +132,8 @@ def create_link_token(user_id: str):
         logger.info("🌐 Making Plaid API call: link_token_create")
         response = client.link_token_create(request)
         
-        logger.info("✅ Link token created successfully")
-        logger.info(f"🔗 Link token: {response.link_token[:20]}...")
+        logger.info("Link token created successfully")
+        logger.info(f"Link token: {response.link_token[:8]}...")
         
         return response.link_token
     except Exception as e:
@@ -160,9 +159,9 @@ def exchange_public_token(public_token: str, user_id: str):
         logger.info("🌐 Making Plaid API call: item_public_token_exchange")
         response = client.item_public_token_exchange(request)
         
-        logger.info("✅ Public token exchanged successfully")
-        logger.info(f"🔑 Access token: {response.access_token[:20]}...")
-        logger.info(f"🆔 Item ID: {response.item_id}")
+        logger.info("Public token exchanged successfully")
+        logger.info(f"Access token: {response.access_token[:8]}...")
+        logger.info(f"Item ID: {response.item_id[:8]}...")
         
         # In a real application, you would store the access_token and item_id
         # in your database associated with the user_id
@@ -194,10 +193,10 @@ def get_accounts(access_token: str):
         logger.info("🌐 Making Plaid API call: accounts_get")
         response = client.accounts_get(request)
         
-        logger.info("✅ Accounts fetched successfully")
-        logger.info(f"🏦 Account count: {len(response.accounts)}")
-        logger.info(f"🆔 Item ID: {response.item.item_id}")
-        logger.info(f"🏛️ Institution: {response.item.institution_id}")
+        logger.info("Accounts fetched successfully")
+        logger.info(f"Account count: {len(response.accounts)}")
+        logger.info(f"Item ID: {response.item.item_id[:8]}...")
+        logger.info(f"Institution: {response.item.institution_id}")
         
         # Log sample account details
         if response.accounts:
@@ -300,10 +299,10 @@ def get_transactions(access_token: str, start_date: str = None, end_date: str = 
             # Re-raise the error with more context
             raise
         
-        logger.info("✅ Transactions fetched successfully")
-        logger.info(f"💰 Transaction count: {len(response.transactions)}")
-        logger.info(f"📊 Total transactions: {response.total_transactions}")
-        logger.info(f"🆔 Request ID: {response.request_id}")
+        logger.info("Transactions fetched successfully")
+        logger.info(f"Transaction count: {len(response.transactions)}")
+        logger.info(f"Total transactions: {response.total_transactions}")
+        logger.info(f"Request ID: {response.request_id[:8]}...")
         
         # Log sample transaction details
         if response.transactions:

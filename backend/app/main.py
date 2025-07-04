@@ -1,10 +1,13 @@
 from fastapi import FastAPI, Depends, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from pydantic import BaseModel
 from typing import Optional, List, Dict
 import logging
 from dotenv import load_dotenv
 import os
+import time
+from collections import defaultdict
 
 # Load environment variables from .env file
 load_dotenv()
@@ -14,6 +17,7 @@ from app.plaid_client import create_link_token, exchange_public_token, get_trans
 from app.config import settings
 from app.email_service import email_service
 from app.scheduler import weekly_scheduler
+from app.utils import get_user_budgets, save_user_budgets, calculate_category_spending
 from datetime import datetime, timedelta
 from fastapi.responses import JSONResponse, FileResponse
 import csv
@@ -25,7 +29,6 @@ from reportlab.lib.units import inch
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_LEFT
 import tempfile
-import json
 
 # Configure logging based on environment
 if settings.is_production():
@@ -41,8 +44,32 @@ else:
 
 logger = logging.getLogger(__name__)
 
-# In-memory storage for budgets (in production, use a database)
-budgets_storage = {}
+# Rate limiting storage
+request_counts = defaultdict(list)
+
+async def rate_limit_middleware(request: Request, call_next):
+    """Simple rate limiting middleware"""
+    client_ip = request.client.host
+    current_time = time.time()
+    
+    # Clean old requests (older than 1 minute)
+    request_counts[client_ip] = [req_time for req_time in request_counts[client_ip] 
+                                if current_time - req_time < 60]
+    
+    # Check rate limit (100 requests per minute)
+    if len(request_counts[client_ip]) >= 100:
+        return JSONResponse(
+            status_code=429,
+            content={"detail": "Rate limit exceeded. Please try again later."}
+        )
+    
+    # Add current request
+    request_counts[client_ip].append(current_time)
+    
+    response = await call_next(request)
+    return response
+
+
 
 # Notification models
 class NotificationCreate(BaseModel):
@@ -168,6 +195,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.add_middleware(
+    TrustedHostMiddleware,
+    allowed_hosts=settings.ALLOWED_HOSTS
+)
+
+app.middleware("http")(rate_limit_middleware)
+
 class PublicTokenRequest(BaseModel):
     public_token: str
 
@@ -199,19 +233,14 @@ async def create_plaid_link_token(current_user: dict = Depends(get_current_user)
     logger.info("🔄 Creating Plaid link token")
     logger.info(f"👤 User ID: {current_user['user_id']}")
     
-    # Console log to confirm link token request (as requested)
-    print(f"[Plaid] Link token request by: {current_user.get('email', 'unknown')}")
-    
     try:
         user_id = current_user["user_id"]
+        
         logger.info("🌐 Calling Plaid API to create link token...")
         link_token = create_link_token(user_id)
         
-        logger.info("✅ Link token created successfully")
-        logger.info(f"🔗 Link token: {link_token[:20]}...")
-        
-        # Console log to confirm link token response (as requested)
-        print(f"[Plaid] Link Token Response: {link_token[:20]}...")
+        logger.info("Link token created successfully")
+        logger.info(f"Link token: {link_token[:8]}...")
         
         return {
             "link_token": link_token,
@@ -221,56 +250,16 @@ async def create_plaid_link_token(current_user: dict = Depends(get_current_user)
         logger.error(f"❌ Configuration error: {str(e)}")
         raise HTTPException(
             status_code=500,
-            detail=f"Plaid configuration error: {str(e)}. Please check environment variables."
+            detail="Plaid configuration error. Please check server configuration."
         )
     except Exception as e:
         logger.error(f"❌ Failed to create Plaid link token: {str(e)}")
-        logger.error(f"❌ Error type: {type(e).__name__}")
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to create Plaid link token: {str(e)}"
+            detail="Failed to create Plaid link token"
         )
 
-@app.get("/api/v1/plaid/link-token/test")
-async def create_plaid_link_token_test():
-    """
-    TEST ENDPOINT: Create a Plaid link token for testing without authentication.
-    WARNING: This is for development/testing only. Remove in production.
-    """
-    logger.info("🧪 TEST: Creating Plaid link token (no auth required)")
-    
-    # TEST USER ID - Replace with real auth logic in production
-    test_user_id = "test_user_123"
-    logger.info(f"🧪 Test User ID: {test_user_id}")
-    
-    try:
-        logger.info("🌐 Calling Plaid API to create link token...")
-        link_token = create_link_token(test_user_id)
-        
-        logger.info("✅ Test link token created successfully")
-        logger.info(f"🔗 Link token: {link_token[:20]}...")
-        
-        # Console log to confirm link token response (as requested)
-        print(f"[Plaid] TEST Link Token Response: {link_token[:20]}...")
-        
-        return {
-            "link_token": link_token,
-            "user_id": test_user_id,
-            "note": "This is a test endpoint - replace with real authentication in production"
-        }
-    except ValueError as e:
-        logger.error(f"❌ Configuration error: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Plaid configuration error: {str(e)}. Please check environment variables."
-        )
-    except Exception as e:
-        logger.error(f"❌ Failed to create test Plaid link token: {str(e)}")
-        logger.error(f"❌ Error type: {type(e).__name__}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to create test Plaid link token: {str(e)}"
-        )
+
 
 @app.post("/api/v1/plaid/exchange-token")
 async def exchange_plaid_token(
@@ -291,9 +280,9 @@ async def exchange_plaid_token(
         logger.info("🌐 Calling Plaid API to exchange public token...")
         result = exchange_public_token(request.public_token, user_id)
         
-        logger.info("✅ Public token exchanged successfully")
-        logger.info(f"🔑 Access token: {result.access_token[:20]}...")
-        logger.info(f"🆔 Item ID: {result.item_id}")
+        logger.info("Public token exchanged successfully")
+        logger.info(f"Access token: {result.access_token[:8]}...")
+        logger.info(f"Item ID: {result.item_id[:8]}...")
         
         # Store the access_token and item_id in database associated with the user_id
         # In a real application, you would use a proper database like PostgreSQL, MongoDB, etc.
@@ -307,15 +296,7 @@ async def exchange_plaid_token(
         # Store the access token (in-memory for development)
         store_access_token(user_id, result.access_token, result.item_id)
         
-        # TODO: Implement actual database storage
-        # Example database storage (pseudo-code):
-        # await db.plaid_connections.create({
-        #     user_id: user_id,
-        #     access_token: result.access_token,
-        #     item_id: result.item_id,
-        #     created_at: datetime.now(),
-        #     institution_name: metadata.institution?.name if available
-        # })
+
         
         return {
             "access_token": result.access_token,
@@ -352,12 +333,12 @@ async def get_plaid_accounts(current_user: dict = Depends(get_current_user)):
                 detail="No bank account connected. Please connect your bank account first."
             )
         
-        logger.info(f"🔑 Access token found: {access_token[:20]}...")
-        logger.info("🌐 Calling Plaid API to get accounts...")
+        logger.info(f"Access token found: {access_token[:8]}...")
+        logger.info("Calling Plaid API to get accounts...")
         result = get_accounts(access_token)
         
-        logger.info("✅ Accounts fetched successfully")
-        logger.info(f"🏦 Account count: {len(result.accounts)}")
+        logger.info("Accounts fetched successfully")
+        logger.info(f"Account count: {len(result.accounts)}")
         
         # Convert accounts to JSON-serializable format
         accounts_data = []
@@ -670,7 +651,6 @@ async def get_user_alerts(current_user: dict = Depends(get_current_user)):
         # 3. Check for budget alerts (this would require budget data from frontend)
         # For now, we'll add a placeholder for budget alerts
         logger.info("🔍 Checking for budget alerts...")
-        # TODO: Implement budget alert checking when budget data is available
         
         logger.info(f"✅ Generated {len(alerts)} alerts for user {user_id}")
         
@@ -900,67 +880,7 @@ def generate_budget_id():
     """Generate a unique budget ID"""
     return f"budget_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}"
 
-def get_user_budgets(user_id: str) -> List[dict]:
-    """Get all budgets for a user"""
-    return budgets_storage.get(user_id, [])
 
-def save_user_budgets(user_id: str, budgets: List[dict]):
-    """Save budgets for a user"""
-    budgets_storage[user_id] = budgets
-
-def calculate_category_spending(user_id: str, category: str, month: str = None) -> float:
-    """Calculate actual spending for a category in a given month"""
-    try:
-        # Get the access token for this user
-        access_token = get_access_token_for_user(user_id)
-        if not access_token:
-            logger.warning(f"⚠️ No access token found for user: {user_id}")
-            return 0.0
-        
-        # If no month specified, use current month
-        if not month:
-            month = datetime.now().strftime('%Y-%m')
-        
-        # Calculate start and end dates for the month
-        start_date = f"{month}-01"
-        if month == datetime.now().strftime('%Y-%m'):
-            end_date = datetime.now().strftime('%Y-%m-%d')
-        else:
-            # Get last day of the month
-            next_month = datetime.strptime(f"{month}-01", '%Y-%m-%d') + timedelta(days=32)
-            last_day = (next_month.replace(day=1) - timedelta(days=1)).day
-            end_date = f"{month}-{last_day:02d}"
-        
-        logger.info(f"💰 Calculating spending for category '{category}' in {month}")
-        logger.info(f"📅 Date range: {start_date} to {end_date}")
-        
-        # Get transactions for the month
-        result = get_transactions(access_token, start_date, end_date, 1000)
-        
-        # Calculate total spending for the category
-        total_spent = 0.0
-        for transaction in result.transactions:
-            # Check if transaction matches the category
-            if transaction.personal_finance_category:
-                primary_category = transaction.personal_finance_category.primary.lower()
-                detailed_category = transaction.personal_finance_category.detailed.lower()
-                category_lower = category.lower()
-                
-                # Match by primary or detailed category
-                if (category_lower in primary_category or 
-                    category_lower in detailed_category or
-                    primary_category in category_lower or
-                    detailed_category in category_lower):
-                    # Only count negative amounts (spending)
-                    if transaction.amount < 0:
-                        total_spent += abs(transaction.amount)
-        
-        logger.info(f"✅ Total spent for '{category}' in {month}: ${total_spent:.2f}")
-        return total_spent
-        
-    except Exception as e:
-        logger.error(f"❌ Error calculating spending for category '{category}': {str(e)}")
-        return 0.0
 
 def update_budget_with_spending(budget: dict, user_id: str) -> dict:
     """Update budget with actual spending data"""

@@ -20,19 +20,14 @@ export default function Alerts() {
     try {
       setIsLoading(true);
       setError(null);
-      console.log("🔄 Fetching alerts...");
       
       const response = await alertsService.getAlerts();
-      console.log("✅ Alerts fetched:", response);
       
       setAlerts(response.alerts || []);
     } catch (error) {
-      console.error("❌ Error fetching alerts:", error);
-      
       // Handle specific error cases
       if (error.response?.status === 400) {
         // No bank account connected - this is expected for new users
-        console.log("💡 No bank account connected yet - no alerts to show");
         setAlerts([]);
       } else if (error.response?.status === 401) {
         // Authentication error

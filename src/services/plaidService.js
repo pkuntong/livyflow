@@ -14,14 +14,10 @@ class PlaidService {
       this.baseURL = 'https://livyflow.onrender.com';
     }
     
-    console.log("🔧 PlaidService initialized with API URL:", this.baseURL);
-    console.log("🌍 Environment:", import.meta.env.VITE_ENVIRONMENT || 'development');
-    console.log("🔧 Development mode:", isDev);
-    
+    // Security: Only log in development
     if (isDev) {
-      console.log("✅ Using Vite proxy in development mode");
-    } else {
-      console.log("✅ Using production backend URL:", this.baseURL);
+      console.log("PlaidService initialized with API URL:", this.baseURL);
+      console.log("Environment:", import.meta.env.VITE_ENVIRONMENT || 'development');
     }
   }
 
@@ -30,20 +26,13 @@ class PlaidService {
     try {
       const user = auth.currentUser;
       if (!user) {
-        console.log("🔑 No authenticated user found");
         return null;
       }
       
-      console.log("🔑 Getting Firebase ID token for user:", user.email);
       const idToken = await user.getIdToken();
-      console.log("🔑 Firebase ID token retrieved:", idToken ? "✅ Present" : "❌ Missing");
-      if (idToken) {
-        console.log("🔑 Token length:", idToken.length);
-        console.log("🔑 Token preview:", idToken.substring(0, 20) + "...");
-      }
       return idToken;
     } catch (error) {
-      console.error("❌ Error getting Firebase ID token:", error);
+      console.error("Error getting Firebase ID token:", error);
       return null;
     }
   }
@@ -70,8 +59,10 @@ class PlaidService {
         throw new Error('Backend server is not available. Please ensure the backend is running on localhost:8000');
       }
 
-      const endpoint = useTestEndpoint ? '/api/v1/plaid/link-token/test' : '/api/v1/plaid/link-token';
-      console.log("🌐 Making request to:", `${this.baseURL}${endpoint}`);
+      const endpoint = '/api/v1/plaid/link-token';
+      if (import.meta.env.DEV) {
+        console.log("Making request to:", `${this.baseURL}${endpoint}`);
+      }
       
       let config = {
         headers: {
@@ -91,31 +82,27 @@ class PlaidService {
 
       const response = await axios.get(`${this.baseURL}${endpoint}`, config);
 
-      console.log("📡 Response status:", response.status);
-      console.log("📦 Full response data:", response.data);
-      console.log("✅ Link token:", response.data.link_token);
+      if (import.meta.env.DEV) {
+        console.log("Response status:", response.status);
+        console.log("Link token received");
+      }
 
       return response.data.link_token;
     } catch (error) {
-      console.error('❌ Error fetching link token:', error);
+      console.error('Error fetching link token:', error);
       
       // Handle specific error cases
       if (error.code === 'ECONNREFUSED' || error.message.includes('Backend server is not available')) {
-        throw new Error('Backend server is not running. Please start the backend server on localhost:8000');
+        throw new Error('Backend server is not running. Please start the backend server.');
       }
       
       if (error.response?.status === 500) {
-        console.error('❌ Backend error response data:', error.response?.data);
-        throw new Error(`Backend error: ${error.response?.data?.detail || 'Unknown server error'}`);
+        throw new Error('Backend configuration error. Please check the server logs.');
       }
       
       if (error.response?.status === 401) {
         throw new Error('Authentication failed. Please sign in again.');
       }
-      
-      console.error('❌ Error response data:', error.response?.data);
-      console.error('❌ Error status:', error.response?.status);
-      console.error('❌ Error message:', error.message);
       throw error;
     }
   }
@@ -123,8 +110,9 @@ class PlaidService {
   // Exchange public token for access token
   async exchangePublicToken(publicToken) {
     try {
-      console.log("🌐 Making request to:", `${this.baseURL}/api/v1/plaid/exchange-token`);
-      console.log("🔄 Public token to exchange:", publicToken);
+      if (import.meta.env.DEV) {
+        console.log("Making request to:", `${this.baseURL}/api/v1/plaid/exchange-token`);
+      }
       
       const token = await this.getAuthToken();
       if (!token) {
@@ -134,7 +122,6 @@ class PlaidService {
       const requestBody = {
         public_token: publicToken,
       };
-      console.log("📤 Request body:", requestBody);
 
       const response = await axios.post(`${this.baseURL}/api/v1/plaid/exchange-token`, requestBody, {
         headers: {
@@ -144,27 +131,23 @@ class PlaidService {
         timeout: 10000 // 10 second timeout
       });
 
-      console.log("📡 Response status:", response.status);
-      console.log("📡 Response headers:", response.headers);
-      console.log("📦 Full response data:", response.data);
+      if (import.meta.env.DEV) {
+        console.log("Response status:", response.status);
+      }
 
       return response.data;
     } catch (error) {
-      console.error('❌ Error exchanging public token:', error);
+      console.error('Error exchanging public token:', error);
       
       // Handle specific error cases
       if (error.code === 'ECONNREFUSED') {
-        throw new Error('Backend server is not running. Please start the backend server on localhost:8000');
+        throw new Error('Backend server is not running. Please start the backend server.');
       }
       
       if (error.response?.status === 500) {
-        console.error('❌ Backend error response data:', error.response?.data);
-        throw new Error(`Backend error: ${error.response?.data?.detail || 'Unknown server error'}`);
+        throw new Error('Backend configuration error. Please check the server logs.');
       }
       
-      console.error('❌ Error response data:', error.response?.data);
-      console.error('❌ Error status:', error.response?.status);
-      console.error('❌ Error message:', error.message);
       throw error;
     }
   }
@@ -172,7 +155,9 @@ class PlaidService {
   // Get accounts from Plaid
   async getAccounts() {
     try {
-      console.log("🌐 Making request to:", `${this.baseURL}/api/v1/plaid/accounts`);
+      if (import.meta.env.DEV) {
+        console.log("Making request to:", `${this.baseURL}/api/v1/plaid/accounts`);
+      }
       
       const token = await this.getAuthToken();
       if (!token) {
@@ -187,17 +172,18 @@ class PlaidService {
         timeout: 10000 // 10 second timeout
       });
 
-      console.log("📡 Response status:", response.status);
-      console.log("📦 Full response data:", response.data);
-      console.log("🏦 Account count:", response.data.accounts?.length || 0);
+      if (import.meta.env.DEV) {
+        console.log("Response status:", response.status);
+        console.log("Account count:", response.data.accounts?.length || 0);
+      }
 
       return response.data;
     } catch (error) {
-      console.error('❌ Error fetching accounts:', error);
+      console.error('Error fetching accounts:', error);
       
       // Handle specific error cases
       if (error.code === 'ECONNREFUSED') {
-        throw new Error('Backend server is not running. Please start the backend server on localhost:8000');
+        throw new Error('Backend server is not running. Please start the backend server.');
       }
       
       if (error.response?.status === 400) {

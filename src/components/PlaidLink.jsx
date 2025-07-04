@@ -18,16 +18,12 @@ const PlaidLink = ({ onSuccess, onExit, children }) => {
     setError(null);
     
     try {
-      console.log("🔄 Generating Plaid link token...");
-      
       // Use test endpoint only in development
       const isDev = import.meta.env.DEV;
       const token = await plaidService.getLinkToken(isDev);
-      console.log("✅ Link token generated:", token ? "Success" : "Failed");
       
       setLinkToken(token);
     } catch (error) {
-      console.error("❌ Failed to generate link token:", error);
       setError(error.message);
       
       // Show user-friendly error message
@@ -44,38 +40,18 @@ const PlaidLink = ({ onSuccess, onExit, children }) => {
   };
 
   const onPlaidSuccess = async (public_token, metadata) => {
-    console.log("✅ Bank linked!", metadata);
 
     try {
-      // Now I must exchange the public_token with your backend:
-      const response = await fetch("http://localhost:8000/api/v1/plaid/exchange-token", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({ public_token, user_id: "CURRENT_USER_ID" }) // use your real user id
-      });
-
-      if (response.ok) {
-        console.log("✅ Access token saved successfully");
-        const result = await response.json();
-        
-        // Call the success callback with the correct parameters
-        if (onSuccess) {
-          console.log("📞 Calling parent onSuccess callback...");
-          onSuccess(result, metadata);
-        } else {
-          console.warn("⚠️ No onSuccess callback provided");
-        }
-        
-        toast.success('Bank account connected successfully!');
-      } else {
-        console.error("❌ Failed to save access token");
-        const errorData = await response.json();
-        throw new Error(errorData.detail || 'Failed to save access token');
+      // Use the plaidService to exchange the public token
+      const result = await plaidService.exchangePublicToken(public_token);
+      
+      // Call the success callback with the correct parameters
+      if (onSuccess) {
+        onSuccess(result, metadata);
       }
+      
+      toast.success('Bank account connected successfully!');
     } catch (error) {
-      console.error("❌ Failed to exchange public token:", error);
       
       // Show user-friendly error message
       if (error.message.includes('Backend server is not running')) {
@@ -97,9 +73,6 @@ const PlaidLink = ({ onSuccess, onExit, children }) => {
   };
 
   const onPlaidExit = (err, metadata) => {
-    console.log("🚪 Plaid link exited");
-    console.log("❌ Error:", err);
-    console.log("📦 Metadata:", metadata);
     
     if (err) {
       toast.error(`Plaid connection failed: ${err.display_message || err.error_message || 'Unknown error'}`);
@@ -129,7 +102,6 @@ const PlaidLink = ({ onSuccess, onExit, children }) => {
       return;
     }
     
-    console.log("🚀 Opening Plaid link...");
     open();
   };
 

@@ -15,7 +15,6 @@ export default function Export() {
   const handleExportCSV = async () => {
     try {
       setIsExportingCSV(true);
-      console.log("🚀 Starting CSV export...");
       
       const params = {};
       if (exportParams.start_date) params.start_date = exportParams.start_date;
@@ -23,12 +22,10 @@ export default function Export() {
       if (exportParams.count) params.count = exportParams.count;
       
       const result = await exportService.exportTransactionsCSV(params);
-      console.log("✅ CSV export completed:", result);
       
       // Show success message (you could add a toast notification here)
       alert(`CSV export successful! File saved as: ${result.filename}`);
     } catch (error) {
-      console.error("❌ CSV export failed:", error);
       
       // Handle specific error cases
       if (error.response?.status === 400) {
@@ -48,7 +45,6 @@ export default function Export() {
   const handleExportPDF = async () => {
     try {
       setIsExportingPDF(true);
-      console.log("🚀 Starting PDF export...");
       
       const params = {};
       if (exportParams.start_date) params.start_date = exportParams.start_date;
@@ -56,12 +52,10 @@ export default function Export() {
       if (exportParams.count) params.count = exportParams.count;
       
       const result = await exportService.exportTransactionsPDF(params);
-      console.log("✅ PDF export completed:", result);
       
       // Show success message (you could add a toast notification here)
       alert(`PDF export successful! File saved as: ${result.filename}`);
     } catch (error) {
-      console.error("❌ PDF export failed:", error);
       
       // Handle specific error cases
       if (error.response?.status === 400) {

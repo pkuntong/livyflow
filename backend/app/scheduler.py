@@ -5,6 +5,7 @@ import logging
 from typing import Dict, List
 from .email_service import email_service
 from .plaid_client import get_transactions, get_access_token_for_user
+from .utils import get_user_budgets, calculate_category_spending
 
 logger = logging.getLogger(__name__)
 
@@ -14,53 +15,7 @@ user_preferences = {}
 # In-memory storage for budgets (in production, use a database)
 budgets_storage = {}
 
-def get_user_budgets(user_id: str) -> List[dict]:
-    """Get all budgets for a user."""
-    return budgets_storage.get(user_id, [])
 
-def calculate_category_spending(user_id: str, category: str, month: str = None) -> float:
-    """Calculate total spending for a specific category and month."""
-    try:
-        # Get access token for user
-        access_token = get_access_token_for_user(user_id)
-        if not access_token:
-            return 0.0
-        
-        # Calculate date range for the month
-        if month:
-            start_date = datetime.strptime(month, '%Y-%m')
-            end_date = (start_date.replace(day=1) + timedelta(days=32)).replace(day=1) - timedelta(days=1)
-        else:
-            # Current month
-            now = datetime.now()
-            start_date = now.replace(day=1)
-            end_date = (start_date + timedelta(days=32)).replace(day=1) - timedelta(days=1)
-        
-        # Get transactions for the month
-        transactions_response = get_transactions(
-            access_token,
-            start_date.strftime('%Y-%m-%d'),
-            end_date.strftime('%Y-%m-%d'),
-            1000
-        )
-        
-        if not transactions_response or 'transactions' not in transactions_response:
-            return 0.0
-        
-        transactions = transactions_response['transactions']
-        total_spent = 0.0
-        
-        for transaction in transactions:
-            if transaction.get('amount') and transaction.get('amount') < 0:  # Only spending transactions
-                transaction_category = transaction.get('category', ['Other'])[0] if transaction.get('category') else 'Other'
-                if transaction_category == category:
-                    total_spent += abs(transaction['amount'])
-        
-        return total_spent
-        
-    except Exception as e:
-        logger.error(f"❌ Error calculating category spending: {str(e)}")
-        return 0.0
 
 class WeeklyEmailScheduler:
     def __init__(self):

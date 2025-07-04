@@ -89,7 +89,6 @@ export default function Transactions() {
   // Fetch Plaid transactions when user is authenticated
   useEffect(() => {
     if (!user) {
-      console.log("🔒 User not authenticated, skipping Plaid transactions fetch");
       setPlaidTransactions([]);
       return;
     }
@@ -97,31 +96,23 @@ export default function Transactions() {
     const fetchPlaidTransactions = async () => {
       try {
         setIsLoading(true);
-        console.log("🔄 Fetching Plaid transactions...");
         
         const response = await plaidService.getTransactions(null, null, 100); // Get more transactions for filtering
-        console.log("✅ Plaid transactions fetched:", response);
         
         setPlaidTransactions(response.transactions || []);
       } catch (error) {
-        console.error("❌ Error fetching Plaid transactions:", error);
-        
         // Handle specific error cases
         if (error.response?.status === 400) {
           // No bank account connected - this is expected for new users
-          console.log("💡 No bank account connected yet - this is normal for new users");
           setPlaidTransactions([]);
         } else if (error.response?.status === 401) {
           // Authentication error
-          console.error("❌ Authentication failed");
           setPlaidTransactions([]);
         } else if (error.response?.status === 403) {
           // Forbidden
-          console.error("❌ Access denied");
           setPlaidTransactions([]);
         } else {
           // Generic error
-          console.error("❌ Failed to fetch transactions:", error.message);
           setPlaidTransactions([]);
         }
       } finally {

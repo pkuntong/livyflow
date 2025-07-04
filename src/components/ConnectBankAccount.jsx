@@ -8,26 +8,9 @@ const ConnectBankAccount = () => {
   const [connectionStatus, setConnectionStatus] = useState(null);
   const [connectedAccounts, setConnectedAccounts] = useState([]);
 
-  // Add mount logging
-  useEffect(() => {
-    console.log("🚨 ConnectBankAccount component mounted");
-    console.log("👤 User authentication status:", user ? "✅ Signed in" : "❌ Not signed in");
-    if (user) {
-      console.log("👤 User email:", user.email);
-      console.log("🆔 User ID:", user.uid);
-    }
-  }, [user]);
+
 
   const handlePlaidSuccess = (result, metadata) => {
-    console.log("🎉 ConnectBankAccount: Plaid connection successful!");
-    console.log("📊 Full result:", result);
-    console.log("🔍 Full metadata:", metadata);
-    console.log("🔑 Access token:", result.access_token);
-    console.log("🆔 Item ID:", result.item_id);
-    console.log("👤 User ID:", result.user_id);
-    console.log("💾 Stored status:", result.stored);
-    console.log("📝 Message:", result.message);
-    
     // Add the connected account to the list
     const newAccount = {
       id: result.access_token,
@@ -36,36 +19,16 @@ const ConnectBankAccount = () => {
       connectedAt: new Date().toISOString(),
     };
     
-    console.log("💾 New account object:", newAccount);
-    console.log("📋 Institution name:", newAccount.institution);
-    console.log("🏦 Number of accounts:", newAccount.accounts.length);
-    console.log("📅 Connected at:", newAccount.connectedAt);
-    
     setConnectedAccounts(prev => {
       const updated = [...prev, newAccount];
-      console.log("📈 Updated accounts list:", updated);
       return updated;
     });
     setConnectionStatus('success');
-    
-    // You can store this data in your backend or state management
-    console.log("💾 Ready to store account data in backend/database");
-    
-    // Show success toast
-    console.log("🎉 Plaid connection completed successfully!");
   };
 
   const handlePlaidExit = (err, metadata) => {
-    console.log("🚪 ConnectBankAccount: Plaid connection exited");
-    console.log("🔍 Exit metadata:", metadata);
     if (err) {
-      console.error("❌ Plaid exit error:", err);
-      console.log("🚫 Error display message:", err.display_message);
-      console.log("🚫 Error code:", err.error_code);
-      console.log("🚫 Error type:", err.error_type);
       setConnectionStatus('error');
-    } else {
-      console.log("✅ Plaid exited without error (user cancelled)");
     }
   };
 

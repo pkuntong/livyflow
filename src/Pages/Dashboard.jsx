@@ -24,7 +24,6 @@ export default function Dashboard({ accounts = [], transactions = [] }) {
   // Fetch Plaid transactions when user is authenticated
   useEffect(() => {
     if (!user) {
-      console.log("🔒 User not authenticated, skipping Plaid transactions fetch");
       setPlaidTransactions([]);
       return;
     }
@@ -44,7 +43,7 @@ export default function Dashboard({ accounts = [], transactions = [] }) {
           });
           setHasShownWelcome(true);
         } catch (error) {
-          console.error("Error creating welcome notification:", error);
+          // Silent error handling for welcome notification
         }
       };
       
@@ -63,14 +62,10 @@ export default function Dashboard({ accounts = [], transactions = [] }) {
     try {
       setPlaidTransactionsLoading(true);
       setPlaidTransactionsError(null);
-      console.log("🔄 Fetching Plaid transactions...");
-      
       const response = await plaidService.getTransactions(null, null, 500); // Get more transactions for better data
-      console.log("✅ Plaid transactions fetched:", response);
       
       setPlaidTransactions(response.transactions || []);
     } catch (error) {
-      console.error("❌ Error fetching Plaid transactions:", error);
       
       // Handle specific error cases
       if (error.response?.status === 400) {
@@ -98,17 +93,14 @@ export default function Dashboard({ accounts = [], transactions = [] }) {
   // Manual refresh function
   const handleRefresh = async () => {
     if (!user) {
-      console.log("🔒 User not authenticated, cannot refresh");
       return;
     }
 
     setIsRefreshing(true);
     try {
-      console.log("🔄 Manual refresh started...");
       await fetchPlaidTransactions();
-      console.log("✅ Manual refresh completed");
     } catch (error) {
-      console.error("❌ Manual refresh failed:", error);
+      // Silent error handling for manual refresh
     } finally {
       setIsRefreshing(false);
     }

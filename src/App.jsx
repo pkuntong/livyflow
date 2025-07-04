@@ -11,7 +11,7 @@ import Settings from './Pages/Settings'
 import Landing from './Landing'
 import SignUp from './Pages/SignUp'
 import Login from './Pages/Login'
-import { LayoutGrid, Receipt, PiggyBank, CreditCard, LineChart, User } from 'lucide-react'
+
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { StagewiseToolbar } from '@stagewise/toolbar-react'
 import { ReactPlugin } from '@stagewise-plugins/react'
