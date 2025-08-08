@@ -13,7 +13,8 @@ export default defineConfig({
     alias: {
       '@': '/src'
     },
-    preserveSymlinks: true
+    preserveSymlinks: true,
+    dedupe: ['react', 'react-dom', 'clsx', 'tailwind-merge']
   },
   // Add experimental features for better module resolution
   experimental: {
@@ -25,6 +26,16 @@ export default defineConfig({
       }
     }
   },
+  // Prevent hoisting issues
+  esbuild: {
+    loader: 'jsx',
+    include: /.*\.[tj]sx?$/,
+    exclude: [],
+    target: 'es2020',
+    supported: {
+      'top-level-await': true
+    }
+  },
   // Ensure compatibility with Vercel
   ssr: {
     noExternal: ['firebase']
@@ -33,14 +44,39 @@ export default defineConfig({
     // Optimize for mobile performance and Vercel deployment
     rollupOptions: {
       output: {
-        manualChunks: {
-          vendor: ['react', 'react-dom'],
-          charts: ['recharts'],
-          icons: ['lucide-react'],
-          router: ['react-router-dom'],
-          firebase: ['firebase/app', 'firebase/auth'],
-          ui: ['@headlessui/react', 'tailwind-merge', 'clsx'],
-          utils: ['axios']
+        manualChunks: (id) => {
+          // Handle React and React DOM
+          if (id.includes('react') && id.includes('node_modules')) {
+            return 'vendor';
+          }
+          // Handle charts
+          if (id.includes('recharts') && id.includes('node_modules')) {
+            return 'charts';
+          }
+          // Handle icons
+          if (id.includes('lucide-react') && id.includes('node_modules')) {
+            return 'icons';
+          }
+          // Handle router
+          if (id.includes('react-router-dom') && id.includes('node_modules')) {
+            return 'router';
+          }
+          // Handle Firebase
+          if (id.includes('firebase') && id.includes('node_modules')) {
+            return 'firebase';
+          }
+          // Handle Headless UI
+          if (id.includes('@headlessui/react') && id.includes('node_modules')) {
+            return 'headlessui';
+          }
+          // Handle utility libraries
+          if ((id.includes('tailwind-merge') || id.includes('clsx') || id.includes('axios')) && id.includes('node_modules')) {
+            return 'utils';
+          }
+          // Default chunk for other dependencies
+          if (id.includes('node_modules')) {
+            return 'vendor';
+          }
         }
       }
     },
@@ -55,11 +91,6 @@ export default defineConfig({
     outDir: 'dist',
     emptyOutDir: true
   },
-  esbuild: {
-    loader: 'jsx',
-    include: /.*\.[tj]sx?$/,
-    exclude: [],
-  },
   optimizeDeps: {
     include: [
       'react', 
@@ -71,8 +102,10 @@ export default defineConfig({
       'react-router-dom',
       'axios',
       'tailwind-merge',
-      'clsx'
+      'clsx',
+      '@headlessui/react'
     ],
+    exclude: [],
     esbuildOptions: {
       loader: {
         '.js': 'jsx',
