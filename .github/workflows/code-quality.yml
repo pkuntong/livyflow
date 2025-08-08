@@ -31,7 +31,7 @@ jobs:
           cache: 'npm'
 
       - name: Setup Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: 'pip'
@@ -282,7 +282,7 @@ jobs:
     
     steps:
       - name: Download all analysis reports
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
 
       - name: Evaluate quality gates
         id: quality_check
