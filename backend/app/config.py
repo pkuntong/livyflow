@@ -60,6 +60,8 @@ class Settings(BaseSettings):
     PLAID_CLIENT_ID: str
     PLAID_SECRET: str
     PLAID_ENV: str = "production"
+    # Optional: OAuth redirect URI for OAuth-based institutions (e.g., Bank of America)
+    PLAID_REDIRECT_URI: Optional[str] = os.getenv("PLAID_REDIRECT_URI")
     
     # Email Configuration
     SMTP_SERVER: str = "smtp.gmail.com"

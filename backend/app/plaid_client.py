@@ -71,8 +71,6 @@ def get_plaid_client():
     # Safety log to confirm the environment
     logger.info(f"🔒 [Plaid] Running in: {plaid_env}")
     
-
-    
     logger.info(f"Client ID: {settings.PLAID_CLIENT_ID[:8]}...")
     logger.info(f"Secret configured: {'Yes' if settings.PLAID_SECRET else 'No'}")
     
@@ -112,15 +110,19 @@ def create_link_token(user_id: str):
     try:
         client = get_plaid_client()
         
-        request = LinkTokenCreateRequest(
-            products=[Products("auth"), Products("transactions")],
-            client_name="LivyFlow",
-            country_codes=[CountryCode("US")],
-            language="en",
-            user=LinkTokenCreateRequestUser(
-                client_user_id=user_id
-            )
-        )
+        request_kwargs = {
+            'products': [Products("auth"), Products("transactions")],
+            'client_name': "LivyFlow",
+            'country_codes': [CountryCode("US")],
+            'language': "en",
+            'user': LinkTokenCreateRequestUser(client_user_id=user_id)
+        }
+        # For OAuth-based institutions (e.g., Bank of America), Plaid requires a redirect_uri
+        if settings.PLAID_REDIRECT_URI:
+            request_kwargs['redirect_uri'] = settings.PLAID_REDIRECT_URI
+            logger.info(f"🔗 Using redirect_uri: {settings.PLAID_REDIRECT_URI}")
+        
+        request = LinkTokenCreateRequest(**request_kwargs)
         
         logger.info("📤 Link token request details:")
         logger.info(f"   - Products: {[p.value for p in request.products]}")
@@ -128,6 +130,8 @@ def create_link_token(user_id: str):
         logger.info(f"   - Country codes: {[c.value for c in request.country_codes]}")
         logger.info(f"   - Language: {request.language}")
         logger.info(f"   - User ID: {request.user.client_user_id}")
+        if settings.PLAID_REDIRECT_URI:
+            logger.info(f"   - Redirect URI: {settings.PLAID_REDIRECT_URI}")
         
         logger.info("🌐 Making Plaid API call: link_token_create")
         response = client.link_token_create(request)

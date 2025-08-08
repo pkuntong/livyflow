@@ -87,6 +87,8 @@ const PlaidLink = ({ onSuccess, onExit, children }) => {
     token: linkToken,
     onSuccess: onPlaidSuccess,
     onExit: onPlaidExit,
+    // If backend is configured with redirect URI, Plaid will include it in the
+    // link_token metadata and it will be respected by the Link flow automatically.
   };
 
   const { open, ready } = usePlaidLink(config);
