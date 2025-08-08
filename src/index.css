@@ -421,28 +421,59 @@ img[loading="lazy"].loaded {
   animation: progress-slide 1s infinite linear;
 }
 
-/* Dark mode support */
-@media (prefers-color-scheme: dark) {
-  body {
-    background-color: #1f2937;
-    color: #f9fafb;
-  }
-  
-  /* Ensure sufficient contrast in dark mode */
-  .text-gray-600 {
-    color: #d1d5db;
-  }
-  
-  .text-gray-500 {
-    color: #9ca3af;
-  }
-  
-  .bg-white {
-    background-color: #374151;
-    color: #f9fafb;
-  }
-  
-  .border-gray-200 {
-    border-color: #4b5563;
-  }
+/* Force light theme for consistent design */
+body {
+  background-color: #f8fafc !important;
+  color: #1f2937 !important;
+}
+
+.text-gray-600 {
+  color: #4b5563 !important;
+}
+
+.text-gray-500 {
+  color: #6b7280 !important;
+}
+
+.bg-white {
+  background-color: #ffffff !important;
+  color: #1f2937 !important;
+}
+
+.border-gray-200 {
+  border-color: #e5e7eb !important;
+}
+
+/* Ensure proper contrast for all text elements */
+.text-gray-900 {
+  color: #111827 !important;
+}
+
+.text-gray-700 {
+  color: #374151 !important;
+}
+
+.text-gray-600 {
+  color: #4b5563 !important;
+}
+
+.text-gray-500 {
+  color: #6b7280 !important;
+}
+
+.text-gray-400 {
+  color: #9ca3af !important;
+}
+
+/* Ensure proper background colors */
+.bg-gray-50 {
+  background-color: #f9fafb !important;
+}
+
+.bg-gray-100 {
+  background-color: #f3f4f6 !important;
+}
+
+.bg-gray-200 {
+  background-color: #e5e7eb !important;
 } 

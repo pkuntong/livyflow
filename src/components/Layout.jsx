@@ -82,7 +82,7 @@ export default function Layout() {
   }, [sidebarOpen]);
 
   return (
-    <div className="flex flex-col md:flex-row min-h-screen bg-gray-50 overflow-x-hidden safe-top safe-bottom">
+    <div className="flex flex-col md:flex-row min-h-screen bg-gray-50 overflow-x-hidden safe-top safe-bottom" style={{ backgroundColor: '#f8fafc' }}>
       {/* Toast Container */}
       <ToastContainer />
       
@@ -269,7 +269,7 @@ export default function Layout() {
         </header>
         
         {/* Page Content */}
-        <div id="main-content" className="flex-1 mx-auto max-w-screen-lg w-full px-4 py-4 lg:px-6 lg:py-6 custom-scrollbar smooth-scroll prevent-overscroll pb-20 md:pb-4">
+        <div id="main-content" className="flex-1 mx-auto max-w-screen-lg w-full px-4 py-4 lg:px-6 lg:py-6 custom-scrollbar smooth-scroll prevent-overscroll pb-20 md:pb-4" style={{ backgroundColor: '#f8fafc' }}>
           <Outlet />
         </div>
       </main>
