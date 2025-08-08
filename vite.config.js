@@ -12,7 +12,22 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': '/src'
+    },
+    preserveSymlinks: true
+  },
+  // Add experimental features for better module resolution
+  experimental: {
+    renderBuiltUrl(filename, { hostType }) {
+      if (hostType === 'js') {
+        return { js: `/${filename}` }
+      } else {
+        return { relative: true }
+      }
     }
+  },
+  // Ensure compatibility with Vercel
+  ssr: {
+    noExternal: ['firebase']
   },
   build: {
     // Optimize for mobile performance and Vercel deployment
