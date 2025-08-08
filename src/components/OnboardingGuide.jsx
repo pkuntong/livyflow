@@ -1,6 +1,6 @@
 import React from 'react';
 import { CreditCard, Shield, TrendingUp, Zap } from 'lucide-react';
-import { Button } from './design-system';
+import { Button } from '@/design-system';
 
 const OnboardingGuide = ({ onConnectBank }) => {
   return (
