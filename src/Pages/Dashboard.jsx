@@ -9,6 +9,7 @@ import Alerts from '../components/Alerts.jsx';
 import Export from '../components/Export.jsx';
 import Insights from '../components/Insights.jsx';
 import RecurringSubscriptions from '../components/RecurringSubscriptions.jsx';
+import OnboardingGuide from '../components/OnboardingGuide.jsx';
 import { useAuth } from '../contexts/AuthContext';
 import plaidService from '../services/plaidService';
 import { createNotification } from '../services/notificationService';
@@ -21,6 +22,7 @@ export default function Dashboard({ accounts = [], transactions = [] }) {
   const [plaidTransactionsError, setPlaidTransactionsError] = useState(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [hasShownWelcome, setHasShownWelcome] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
   const dashboardRef = useRef(null);
 
   // Fetch Plaid transactions when user is authenticated
@@ -55,6 +57,15 @@ export default function Dashboard({ accounts = [], transactions = [] }) {
 
   // Combine manual transactions with Plaid transactions
   const allTransactions = [...(Array.isArray(transactions) ? transactions : []), ...plaidTransactions];
+  
+  // Check if user needs onboarding (no transactions and no bank account connected)
+  const needsOnboarding = allTransactions.length === 0 && plaidTransactionsError?.includes("No bank account connected");
+  
+  // Handle bank connection
+  const handleConnectBank = () => {
+    // Navigate to accounts page where they can connect their bank
+    window.location.href = '/app/accounts';
+  };
 
   // Get Plaid accounts from the Accounts page context or fetch them here
   // For now, we'll use the accounts prop and let the Accounts page handle Plaid accounts separately
@@ -130,6 +141,11 @@ export default function Dashboard({ accounts = [], transactions = [] }) {
         <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-900">Financial Dashboard</h1>
         <p className="text-gray-600 mt-1 text-sm sm:text-base">Welcome back! Here's your financial overview.</p>
       </div>
+
+      {/* Onboarding Guide for new users */}
+      {needsOnboarding && (
+        <OnboardingGuide onConnectBank={handleConnectBank} />
+      )}
 
       {/* Financial Alerts */}
       <div className="mb-4 sm:mb-6 lg:mb-8">
