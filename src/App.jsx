@@ -17,8 +17,43 @@ import {
 } from './utils/lazyLoading'
 
 import { AuthProvider, useAuth } from './contexts/AuthContext'
-import { StagewiseToolbar } from '@stagewise/toolbar-react'
-import ReactPlugin from '@stagewise-plugins/react'
+
+// Development tools component - completely disabled for production builds
+function DevTools() {
+  // Early return for production to avoid any imports
+  if (import.meta.env.PROD) {
+    return null;
+  }
+
+  // Only include development tools in development builds
+  if (import.meta.env.DEV) {
+    // Dynamic import to avoid bundle issues
+    const [StagewiseToolbar, setStagewiseToolbar] = React.useState(null);
+    const [ReactPlugin, setReactPlugin] = React.useState(null);
+    
+    React.useEffect(() => {
+      const loadDevTools = async () => {
+        try {
+          const stagewise = await import('@stagewise/toolbar-react');
+          const plugin = await import('@stagewise-plugins/react');
+          setStagewiseToolbar(() => stagewise.StagewiseToolbar);
+          setReactPlugin(() => plugin.default);
+        } catch (error) {
+          console.log('Dev tools not available:', error.message);
+        }
+      };
+      loadDevTools();
+    }, []);
+    
+    if (StagewiseToolbar && ReactPlugin) {
+      return React.createElement(StagewiseToolbar, { 
+        config: { plugins: [ReactPlugin] } 
+      });
+    }
+  }
+  
+  return null;
+}
 
 // Protected Route component
 function ProtectedRoute({ children }) {
@@ -101,8 +136,8 @@ function AppRoutes() {
 function App() {
   return (
     <>
-      {/* Stagewise Toolbar (only shows in dev mode) */}
-      <StagewiseToolbar config={{ plugins: [ReactPlugin] }} />
+      {/* Development tools - only loads in dev mode */}
+      <DevTools />
       <Router>
         <AuthProvider>
           <AppRoutes />

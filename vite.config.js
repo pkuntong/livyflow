@@ -4,13 +4,18 @@ import react from '@vitejs/plugin-react'
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react()],
+  define: {
+    // Ensure process is defined for Firebase compatibility
+    'process.env': {},
+    global: 'globalThis',
+  },
   resolve: {
     alias: {
       '@': '/src'
     }
   },
   build: {
-    // Optimize for mobile performance
+    // Optimize for mobile performance and Vercel deployment
     rollupOptions: {
       output: {
         manualChunks: {
@@ -18,7 +23,9 @@ export default defineConfig({
           charts: ['recharts'],
           icons: ['lucide-react'],
           router: ['react-router-dom'],
-          firebase: ['firebase/app', 'firebase/auth', 'firebase/firestore']
+          firebase: ['firebase/app', 'firebase/auth'],
+          ui: ['@headlessui/react', 'tailwind-merge', 'clsx'],
+          utils: ['axios']
         }
       }
     },
@@ -26,8 +33,12 @@ export default defineConfig({
     minify: 'esbuild',
     sourcemap: false,
     target: ['es2020', 'edge88', 'firefox78', 'chrome87', 'safari13.1'],
-    // Optimize chunk size for mobile
-    chunkSizeWarningLimit: 500
+    // Optimize chunk size for mobile and Vercel functions
+    chunkSizeWarningLimit: 1000,
+    // Ensure proper asset handling for Vercel
+    assetsDir: 'assets',
+    outDir: 'dist',
+    emptyOutDir: true
   },
   esbuild: {
     loader: 'jsx',
@@ -35,6 +46,18 @@ export default defineConfig({
     exclude: [],
   },
   optimizeDeps: {
+    include: [
+      'react', 
+      'react-dom',
+      'firebase/app', 
+      'firebase/auth',
+      'lucide-react',
+      'recharts',
+      'react-router-dom',
+      'axios',
+      'tailwind-merge',
+      'clsx'
+    ],
     esbuildOptions: {
       loader: {
         '.js': 'jsx',
