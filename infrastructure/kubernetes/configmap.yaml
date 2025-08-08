@@ -1,0 +1,240 @@
+# ConfigMap for LivyFlow application configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: livyflow-config
+  namespace: livyflow-prod
+  labels:
+    app.kubernetes.io/name: livyflow
+    app.kubernetes.io/instance: prod
+    app.kubernetes.io/component: config
+data:
+  # Application configuration
+  ENVIRONMENT: "production"
+  DEBUG: "false"
+  PORT: "8000"
+  HOST: "0.0.0.0"
+  WORKERS: "4"
+  
+  # CORS configuration
+  CORS_ORIGINS: "https://livyflow.com,https://www.livyflow.com"
+  CORS_CREDENTIALS: "true"
+  
+  # Database configuration (non-sensitive)
+  DB_HOST: "livyflow-prod.cluster-xxxxx.us-east-1.rds.amazonaws.com"
+  DB_PORT: "5432"
+  DB_NAME: "livyflow"
+  
+  # Redis configuration
+  REDIS_HOST: "livyflow-prod.xxxxx.cache.amazonaws.com"
+  REDIS_PORT: "6379"
+  REDIS_DB: "0"
+  
+  # Logging configuration
+  LOG_LEVEL: "INFO"
+  LOG_FORMAT: "json"
+  
+  # Rate limiting
+  RATE_LIMIT_REQUESTS: "100"
+  RATE_LIMIT_PERIOD: "3600"
+  
+  # Health check configuration
+  HEALTH_CHECK_PATH: "/api/health"
+  HEALTH_CHECK_TIMEOUT: "30"
+  
+  # Monitoring configuration
+  METRICS_ENABLED: "true"
+  METRICS_PORT: "9090"
+  PROMETHEUS_MULTIPROC_DIR: "/tmp/prometheus_multiproc_dir"
+
+---
+# ConfigMap for staging environment
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: livyflow-config
+  namespace: livyflow-staging
+  labels:
+    app.kubernetes.io/name: livyflow
+    app.kubernetes.io/instance: staging
+    app.kubernetes.io/component: config
+data:
+  # Application configuration
+  ENVIRONMENT: "staging"
+  DEBUG: "true"
+  PORT: "8000"
+  HOST: "0.0.0.0"
+  WORKERS: "2"
+  
+  # CORS configuration
+  CORS_ORIGINS: "https://staging.livyflow.com"
+  CORS_CREDENTIALS: "true"
+  
+  # Database configuration (non-sensitive)
+  DB_HOST: "livyflow-staging.cluster-xxxxx.us-east-1.rds.amazonaws.com"
+  DB_PORT: "5432"
+  DB_NAME: "livyflow"
+  
+  # Redis configuration
+  REDIS_HOST: "livyflow-staging.xxxxx.cache.amazonaws.com"
+  REDIS_PORT: "6379"
+  REDIS_DB: "0"
+  
+  # Logging configuration
+  LOG_LEVEL: "DEBUG"
+  LOG_FORMAT: "json"
+  
+  # Rate limiting
+  RATE_LIMIT_REQUESTS: "50"
+  RATE_LIMIT_PERIOD: "3600"
+  
+  # Health check configuration
+  HEALTH_CHECK_PATH: "/api/health"
+  HEALTH_CHECK_TIMEOUT: "30"
+  
+  # Monitoring configuration
+  METRICS_ENABLED: "true"
+  METRICS_PORT: "9090"
+  PROMETHEUS_MULTIPROC_DIR: "/tmp/prometheus_multiproc_dir"
+
+---
+# ConfigMap for Nginx configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nginx-config
+  namespace: livyflow-prod
+  labels:
+    app.kubernetes.io/name: livyflow
+    app.kubernetes.io/instance: prod
+    app.kubernetes.io/component: nginx-config
+data:
+  nginx.conf: |
+    user nginx;
+    worker_processes auto;
+    error_log /var/log/nginx/error.log notice;
+    pid /var/run/nginx.pid;
+
+    events {
+        worker_connections 1024;
+        use epoll;
+        multi_accept on;
+    }
+
+    http {
+        include /etc/nginx/mime.types;
+        default_type application/octet-stream;
+        
+        log_format main '$remote_addr - $remote_user [$time_local] "$request" '
+                        '$status $body_bytes_sent "$http_referer" '
+                        '"$http_user_agent" "$http_x_forwarded_for"';
+        
+        access_log /var/log/nginx/access.log main;
+        
+        sendfile on;
+        tcp_nopush on;
+        tcp_nodelay on;
+        keepalive_timeout 65;
+        types_hash_max_size 4096;
+        client_max_body_size 16M;
+        
+        gzip on;
+        gzip_vary on;
+        gzip_min_length 1024;
+        gzip_proxied any;
+        gzip_comp_level 6;
+        gzip_types
+            application/atom+xml
+            application/geo+json
+            application/javascript
+            application/x-javascript
+            application/json
+            application/ld+json
+            application/manifest+json
+            application/rdf+xml
+            application/rss+xml
+            application/xhtml+xml
+            application/xml
+            font/eot
+            font/otf
+            font/ttf
+            image/svg+xml
+            text/css
+            text/javascript
+            text/plain
+            text/xml;
+        
+        # Security headers
+        add_header X-Frame-Options "SAMEORIGIN" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header X-XSS-Protection "1; mode=block" always;
+        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+        
+        include /etc/nginx/conf.d/*.conf;
+    }
+
+  default.conf: |
+    upstream backend {
+        server livyflow-backend:8000;
+        keepalive 32;
+    }
+
+    server {
+        listen 80;
+        server_name _;
+        root /usr/share/nginx/html;
+        index index.html;
+        
+        # Static assets with long-term caching
+        location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
+            expires 1y;
+            add_header Cache-Control "public, immutable";
+            add_header X-Content-Type-Options "nosniff" always;
+            add_header Access-Control-Allow-Origin *;
+        }
+        
+        # API proxy with caching for GET requests
+        location /api/ {
+            proxy_pass http://backend;
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection 'upgrade';
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_cache_bypass $http_upgrade;
+            proxy_read_timeout 300s;
+            proxy_connect_timeout 75s;
+            
+            # Cache GET requests for 5 minutes
+            proxy_cache api_cache;
+            proxy_cache_methods GET;
+            proxy_cache_valid 200 5m;
+            proxy_cache_use_stale error timeout invalid_header updating;
+        }
+        
+        # SPA routing for React
+        location / {
+            try_files $uri $uri/ /index.html;
+            expires 1h;
+            add_header Cache-Control "public, must-revalidate, proxy-revalidate";
+        }
+        
+        # Health check
+        location /health {
+            access_log off;
+            return 200 "healthy\n";
+            add_header Content-Type text/plain;
+        }
+        
+        # Security
+        location ~ /\. {
+            deny all;
+            access_log off;
+            log_not_found off;
+        }
+    }
+    
+    # API cache configuration
+    proxy_cache_path /var/cache/nginx levels=1:2 keys_zone=api_cache:10m inactive=60m use_temp_path=off;

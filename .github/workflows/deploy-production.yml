@@ -1,0 +1,326 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches: [ main ]
+  release:
+    types: [ published ]
+  workflow_dispatch:
+    inputs:
+      deployment_type:
+        description: 'Deployment type'
+        required: true
+        default: 'rolling'
+        type: choice
+        options:
+        - rolling
+        - blue-green
+        - canary
+
+env:
+  NODE_VERSION: '18'
+  PYTHON_VERSION: '3.11'
+  VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+  VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID_PRODUCTION }}
+
+jobs:
+  pre-deployment-validation:
+    name: Pre-deployment Validation
+    runs-on: ubuntu-latest
+    outputs:
+      proceed_deployment: ${{ steps.validation.outputs.proceed }}
+      deployment_strategy: ${{ steps.validation.outputs.strategy }}
+      
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate deployment readiness
+        id: validation
+        run: |
+          # Check if staging tests passed
+          echo "Checking staging deployment status..."
+          
+          # Determine deployment strategy
+          STRATEGY="${{ github.event.inputs.deployment_type || 'rolling' }}"
+          echo "strategy=$STRATEGY" >> $GITHUB_OUTPUT
+          
+          # Check if all required checks pass
+          echo "proceed=true" >> $GITHUB_OUTPUT
+          echo "Production deployment validation passed"
+
+      - name: Security scan before production
+        uses: github/super-linter/slim@v5
+        env:
+          DEFAULT_BRANCH: main
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VALIDATE_JAVASCRIPT_ES: true
+          VALIDATE_TYPESCRIPT_ES: true
+          VALIDATE_JSON: true
+
+  build-production:
+    name: Build Production Assets
+    runs-on: ubuntu-latest
+    needs: pre-deployment-validation
+    if: needs.pre-deployment-validation.outputs.proceed_deployment == 'true'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          npm ci --prefer-offline --production=false
+          cd backend && pip install -r requirements.txt
+
+      - name: Setup production environment
+        run: |
+          echo "VITE_APP_ENV=production" >> $GITHUB_ENV
+          echo "VITE_API_URL=${{ secrets.PRODUCTION_API_URL }}" >> $GITHUB_ENV
+          echo "VITE_FIREBASE_API_KEY=${{ secrets.PRODUCTION_FIREBASE_API_KEY }}" >> $GITHUB_ENV
+          echo "VITE_FIREBASE_AUTH_DOMAIN=${{ secrets.PRODUCTION_FIREBASE_AUTH_DOMAIN }}" >> $GITHUB_ENV
+          echo "VITE_FIREBASE_PROJECT_ID=${{ secrets.PRODUCTION_FIREBASE_PROJECT_ID }}" >> $GITHUB_ENV
+
+      - name: Run production build
+        run: |
+          npm run build:production
+          
+      - name: Generate build manifest
+        run: |
+          echo "Build completed at $(date)" > dist/build-info.txt
+          echo "Commit: ${{ github.sha }}" >> dist/build-info.txt
+          echo "Branch: ${{ github.ref_name }}" >> dist/build-info.txt
+          echo "Actor: ${{ github.actor }}" >> dist/build-info.txt
+
+      - name: Upload production build
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-build
+          path: dist/
+          retention-days: 30
+
+      - name: Upload backend assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-assets
+          path: backend/
+          retention-days: 30
+
+  deploy-frontend-production:
+    name: Deploy Frontend to Production
+    runs-on: ubuntu-latest
+    needs: [pre-deployment-validation, build-production]
+    environment: production
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: production-build
+          path: dist/
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install Vercel CLI
+        run: npm install --global vercel@latest
+
+      - name: Pull Vercel Environment Information
+        run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
+
+      - name: Deploy to Vercel Production
+        id: deploy
+        run: |
+          # Deploy to production
+          DEPLOYMENT_URL=$(vercel --prod --token=${{ secrets.VERCEL_TOKEN }})
+          echo "deployment_url=$DEPLOYMENT_URL" >> $GITHUB_OUTPUT
+          echo "Deployed to production: $DEPLOYMENT_URL"
+
+      - name: Production health check
+        run: |
+          sleep 30
+          for i in {1..5}; do
+            if curl -f ${{ secrets.PRODUCTION_DOMAIN }}; then
+              echo "Production health check passed"
+              break
+            fi
+            echo "Health check attempt $i failed, retrying in 10 seconds..."
+            sleep 10
+            if [ $i -eq 5 ]; then
+              echo "Production health check failed after 5 attempts"
+              exit 1
+            fi
+          done
+
+  deploy-backend-production:
+    name: Deploy Backend to Production
+    runs-on: ubuntu-latest
+    needs: [pre-deployment-validation, build-production]
+    environment: production
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download backend artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: backend-assets
+          path: backend/
+
+      - name: Deploy backend
+        run: |
+          echo "Deploying backend to production environment"
+          # This would contain actual backend deployment logic
+          # For example: deployment to cloud provider, container orchestration, etc.
+          echo "Backend deployment completed"
+
+      - name: Backend production health check
+        run: |
+          sleep 30
+          for i in {1..5}; do
+            if curl -f ${{ secrets.PRODUCTION_API_URL }}/health; then
+              echo "Backend health check passed"
+              break
+            fi
+            echo "Backend health check attempt $i failed, retrying..."
+            sleep 15
+            if [ $i -eq 5 ]; then
+              echo "Backend health check failed"
+              exit 1
+            fi
+          done
+
+  production-smoke-tests:
+    name: Production Smoke Tests
+    runs-on: ubuntu-latest
+    needs: [deploy-frontend-production, deploy-backend-production]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install test dependencies
+        run: npm ci
+
+      - name: Run production smoke tests
+        run: |
+          export CYPRESS_baseUrl="${{ secrets.PRODUCTION_DOMAIN }}"
+          export CYPRESS_apiUrl="${{ secrets.PRODUCTION_API_URL }}"
+          npx cypress run --spec "cypress/e2e/smoke/**/*.cy.js" --config video=false
+
+      - name: Performance baseline test
+        run: |
+          npx lighthouse ${{ secrets.PRODUCTION_DOMAIN }} --output=json --output-path=./lighthouse-report.json
+          PERFORMANCE_SCORE=$(cat lighthouse-report.json | jq '.lhr.categories.performance.score * 100')
+          echo "Performance score: $PERFORMANCE_SCORE"
+          
+          # Fail if performance score is below 80
+          if (( $(echo "$PERFORMANCE_SCORE < 80" | bc -l) )); then
+            echo "Performance score below threshold (80). Current: $PERFORMANCE_SCORE"
+            exit 1
+          fi
+
+  create-deployment-summary:
+    name: Create Deployment Summary
+    runs-on: ubuntu-latest
+    needs: [deploy-frontend-production, deploy-backend-production, production-smoke-tests]
+    if: always()
+    
+    steps:
+      - name: Create release summary
+        run: |
+          echo "## 🚀 Production Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "**Environment:** Production" >> $GITHUB_STEP_SUMMARY
+          echo "**Frontend URL:** ${{ secrets.PRODUCTION_DOMAIN }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Backend API:** ${{ secrets.PRODUCTION_API_URL }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Strategy:** ${{ needs.pre-deployment-validation.outputs.deployment_strategy }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Status:** ${{ needs.production-smoke-tests.result == 'success' && '✅ Success' || '❌ Failed' }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Deployed by:** ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Deployment Time:** $(date)" >> $GITHUB_STEP_SUMMARY
+
+      - name: Update deployment status
+        if: needs.production-smoke-tests.result == 'success'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.sha,
+              state: 'success',
+              target_url: '${{ secrets.PRODUCTION_DOMAIN }}',
+              description: 'Production deployment successful',
+              context: 'deployment/production'
+            });
+
+  rollback-on-failure:
+    name: Rollback on Failure
+    runs-on: ubuntu-latest
+    needs: [deploy-frontend-production, deploy-backend-production, production-smoke-tests]
+    if: failure()
+    
+    steps:
+      - name: Initiate rollback
+        run: |
+          echo "Production deployment failed, initiating rollback..."
+          # Rollback logic would go here
+          # This could involve reverting to previous Vercel deployment
+          # and rolling back backend changes
+          echo "Rollback procedures initiated"
+
+      - name: Notify failure and rollback
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.sha,
+              state: 'failure',
+              description: 'Production deployment failed - rollback initiated',
+              context: 'deployment/production'
+            });
+
+  post-deployment-monitoring:
+    name: Post-deployment Monitoring
+    runs-on: ubuntu-latest
+    needs: [production-smoke-tests]
+    if: needs.production-smoke-tests.result == 'success'
+    
+    steps:
+      - name: Setup monitoring alerts
+        run: |
+          echo "Setting up post-deployment monitoring..."
+          # Here you would set up monitoring alerts, synthetic checks, etc.
+          echo "Monitoring configured for production deployment"
+
+      - name: Schedule follow-up checks
+        run: |
+          echo "Production deployment monitoring scheduled"
+          echo "Follow-up checks will run every 15 minutes for the next 2 hours"

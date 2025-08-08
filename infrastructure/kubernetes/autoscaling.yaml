@@ -1,0 +1,690 @@
+# Comprehensive Auto-scaling Configuration for LivyFlow
+
+# Cluster Autoscaler for node scaling
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cluster-autoscaler
+  namespace: kube-system
+  labels:
+    app: cluster-autoscaler
+spec:
+  selector:
+    matchLabels:
+      app: cluster-autoscaler
+  template:
+    metadata:
+      labels:
+        app: cluster-autoscaler
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8085"
+        prometheus.io/path: "/metrics"
+    spec:
+      priorityClassName: system-cluster-critical
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        fsGroup: 65534
+      serviceAccountName: cluster-autoscaler
+      containers:
+      - image: registry.k8s.io/autoscaling/cluster-autoscaler:v1.28.2
+        name: cluster-autoscaler
+        resources:
+          limits:
+            cpu: 100m
+            memory: 600Mi
+          requests:
+            cpu: 100m
+            memory: 600Mi
+        command:
+        - ./cluster-autoscaler
+        - --v=4
+        - --stderrthreshold=info
+        - --cloud-provider=aws
+        - --skip-nodes-with-local-storage=false
+        - --expander=least-waste
+        - --node-group-auto-discovery=asg:tag=k8s.io/cluster-autoscaler/enabled,k8s.io/cluster-autoscaler/livyflow-prod
+        - --balance-similar-node-groups
+        - --scale-down-enabled=true
+        - --scale-down-delay-after-add=10m
+        - --scale-down-unneeded-time=10m
+        - --scale-down-utilization-threshold=0.5
+        - --max-node-provision-time=15m
+        - --scan-interval=10s
+        - --skip-nodes-with-system-pods=false
+        - --prometheus-address=0.0.0.0:8085
+        env:
+        - name: AWS_REGION
+          value: us-east-1
+        - name: AWS_STS_REGIONAL_ENDPOINTS
+          value: regional
+        volumeMounts:
+        - name: ssl-certs
+          mountPath: /etc/ssl/certs/ca-certificates.crt
+          readOnly: true
+        - name: aws-token
+          mountPath: /var/run/secrets/eks.amazonaws.com/serviceaccount
+          readOnly: true
+      volumes:
+      - name: ssl-certs
+        hostPath:
+          path: /etc/ssl/certs/ca-bundle.crt
+      - name: aws-token
+        projected:
+          sources:
+          - serviceAccountToken:
+              path: token
+              expirationSeconds: 86400
+              audience: sts.amazonaws.com
+
+---
+# Service Account for Cluster Autoscaler
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: cluster-autoscaler
+  namespace: kube-system
+  labels:
+    k8s-addon: cluster-autoscaler.addons.k8s.io
+    k8s-app: cluster-autoscaler
+  annotations:
+    eks.amazonaws.com/role-arn: arn:aws:iam::ACCOUNT_ID:role/livyflow-cluster-autoscaler-role
+
+---
+# Vertical Pod Autoscaler for right-sizing
+apiVersion: autoscaling.k8s.io/v1
+kind: VerticalPodAutoscaler
+metadata:
+  name: livyflow-backend-vpa
+  namespace: livyflow-prod
+  labels:
+    app.kubernetes.io/name: livyflow-backend-vpa
+    app.kubernetes.io/component: autoscaling
+spec:
+  targetRef:
+    apiVersion: "apps/v1"
+    kind: Deployment
+    name: livyflow-backend
+  updatePolicy:
+    updateMode: "Auto"  # Auto, Initial, Off
+    minReplicas: 2
+  resourcePolicy:
+    containerPolicies:
+    - containerName: backend
+      maxAllowed:
+        cpu: 2
+        memory: 4Gi
+      minAllowed:
+        cpu: 100m
+        memory: 128Mi
+      controlledResources: ["cpu", "memory"]
+      controlledValues: RequestsAndLimits
+
+---
+# VPA for frontend
+apiVersion: autoscaling.k8s.io/v1
+kind: VerticalPodAutoscaler
+metadata:
+  name: livyflow-frontend-vpa
+  namespace: livyflow-prod
+  labels:
+    app.kubernetes.io/name: livyflow-frontend-vpa
+    app.kubernetes.io/component: autoscaling
+spec:
+  targetRef:
+    apiVersion: "apps/v1"
+    kind: Deployment
+    name: livyflow-frontend
+  updatePolicy:
+    updateMode: "Initial"  # Only set initial resources, don't auto-update
+  resourcePolicy:
+    containerPolicies:
+    - containerName: frontend
+      maxAllowed:
+        cpu: 500m
+        memory: 1Gi
+      minAllowed:
+        cpu: 50m
+        memory: 64Mi
+      controlledResources: ["cpu", "memory"]
+      controlledValues: RequestsAndLimits
+
+---
+# Custom Metrics API for advanced HPA
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: custom-metrics-apiserver
+  namespace: custom-metrics
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: custom-metrics-apiserver
+  namespace: custom-metrics
+  labels:
+    app: custom-metrics-apiserver
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: custom-metrics-apiserver
+  template:
+    metadata:
+      labels:
+        app: custom-metrics-apiserver
+    spec:
+      serviceAccountName: custom-metrics-apiserver
+      containers:
+      - name: custom-metrics-apiserver
+        image: k8s.gcr.io/prometheus-adapter/prometheus-adapter:v0.11.2
+        args:
+        - --secure-port=6443
+        - --tls-cert-file=/var/run/serving-cert/tls.crt
+        - --tls-private-key-file=/var/run/serving-cert/tls.key
+        - --logtostderr=true
+        - --prometheus-url=http://prometheus.livyflow-monitoring.svc:9090/
+        - --metrics-relist-interval=1m
+        - --v=4
+        - --config=/etc/adapter/config.yaml
+        ports:
+        - containerPort: 6443
+        volumeMounts:
+        - mountPath: /var/run/serving-cert
+          name: serving-cert
+          readOnly: true
+        - mountPath: /etc/adapter/
+          name: config
+          readOnly: true
+        - mountPath: /tmp
+          name: tmp-vol
+        resources:
+          limits:
+            cpu: 250m
+            memory: 200Mi
+          requests:
+            cpu: 102m
+            memory: 180Mi
+      volumes:
+      - name: serving-cert
+        secret:
+          secretName: cm-adapter-serving-certs
+      - name: config
+        configMap:
+          name: adapter-config
+      - name: tmp-vol
+        emptyDir: {}
+
+---
+# ConfigMap for custom metrics configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: adapter-config
+  namespace: custom-metrics
+data:
+  config.yaml: |
+    rules:
+    # API request rate metric
+    - seriesQuery: 'http_requests_per_second{namespace!="",pod!=""}'
+      resources:
+        overrides:
+          namespace:
+            resource: namespace
+          pod:
+            resource: pod
+      name:
+        matches: ^(.*)_per_second
+        as: "${1}_per_second"
+      metricsQuery: 'avg(<<.Series>>{<<.LabelMatchers>>}) by (<<.GroupBy>>)'
+    
+    # Database connection pool usage
+    - seriesQuery: 'db_connections_active{namespace!="",pod!=""}'
+      resources:
+        overrides:
+          namespace:
+            resource: namespace
+          pod:
+            resource: pod
+      name:
+        matches: ^(.*)
+        as: "${1}"
+      metricsQuery: 'avg(<<.Series>>{<<.LabelMatchers>>}) by (<<.GroupBy>>)'
+    
+    # Redis cache hit ratio
+    - seriesQuery: 'redis_cache_hit_ratio{namespace!="",pod!=""}'
+      resources:
+        overrides:
+          namespace:
+            resource: namespace
+          pod:
+            resource: pod
+      name:
+        matches: ^(.*)
+        as: "${1}"
+      metricsQuery: 'avg(<<.Series>>{<<.LabelMatchers>>}) by (<<.GroupBy>>)'
+    
+    # Application response time
+    - seriesQuery: 'http_request_duration_seconds{namespace!="",pod!="",quantile="0.95"}'
+      resources:
+        overrides:
+          namespace:
+            resource: namespace
+          pod:
+            resource: pod
+      name:
+        matches: ^(.*)_seconds
+        as: "${1}_seconds"
+      metricsQuery: 'avg(<<.Series>>{<<.LabelMatchers>>}) by (<<.GroupBy>>)'
+
+---
+# Advanced HPA with custom metrics
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: livyflow-backend-advanced-hpa
+  namespace: livyflow-prod
+  labels:
+    app.kubernetes.io/name: livyflow-backend-hpa
+    app.kubernetes.io/component: autoscaling
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: livyflow-backend
+  minReplicas: 2
+  maxReplicas: 20
+  metrics:
+  # CPU-based scaling
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  
+  # Memory-based scaling
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+  
+  # Request rate-based scaling
+  - type: Pods
+    pods:
+      metric:
+        name: http_requests_per_second
+      target:
+        type: AverageValue
+        averageValue: "100"
+  
+  # Database connection-based scaling
+  - type: Pods
+    pods:
+      metric:
+        name: db_connections_active
+      target:
+        type: AverageValue
+        averageValue: "50"
+  
+  # Response time-based scaling
+  - type: Pods
+    pods:
+      metric:
+        name: http_request_duration_seconds
+      target:
+        type: AverageValue
+        averageValue: "0.2"  # 200ms
+  
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+      - type: Percent
+        value: 100
+        periodSeconds: 60
+      - type: Pods
+        value: 4
+        periodSeconds: 60
+      selectPolicy: Max
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 10
+        periodSeconds: 60
+      - type: Pods
+        value: 2
+        periodSeconds: 60
+      selectPolicy: Min
+
+---
+# Predictive HPA using KEDA (Kubernetes Event-Driven Autoscaling)
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: livyflow-backend-keda-scaler
+  namespace: livyflow-prod
+  labels:
+    app.kubernetes.io/name: livyflow-backend-scaler
+    app.kubernetes.io/component: keda-autoscaling
+spec:
+  scaleTargetRef:
+    name: livyflow-backend
+  pollingInterval: 30
+  cooldownPeriod: 300
+  idleReplicaCount: 2
+  minReplicaCount: 2
+  maxReplicaCount: 50
+  triggers:
+  
+  # Scale based on Prometheus metrics
+  - type: prometheus
+    metadata:
+      serverAddress: http://prometheus.livyflow-monitoring.svc:9090
+      metricName: http_requests_per_second
+      threshold: '100'
+      query: sum(rate(http_requests_total{job="livyflow-backend"}[2m]))
+  
+  # Scale based on Redis queue length (if using background jobs)
+  - type: redis
+    metadata:
+      address: livyflow-redis:6379
+      listName: background_jobs
+      listLength: '10'
+      passwordFromEnv: REDIS_PASSWORD
+  
+  # Scale based on PostgreSQL connection count
+  - type: postgresql
+    metadata:
+      connection: postgresql://postgres:password@livyflow-database:5432/livyflow?sslmode=require
+      query: "SELECT COUNT(*) FROM pg_stat_activity WHERE state = 'active';"
+      targetQueryValue: '80'
+  
+  # Time-based scaling for predictable traffic patterns
+  - type: cron
+    metadata:
+      timezone: America/New_York
+      start: "0 8 * * 1-5"   # Scale up at 8 AM on weekdays
+      end: "0 20 * * 1-5"    # Scale down at 8 PM on weekdays
+      desiredReplicas: "10"
+
+---
+# Scheduled scaling for predictable patterns
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: morning-scale-up
+  namespace: livyflow-prod
+  labels:
+    app.kubernetes.io/name: scheduled-scaler
+    app.kubernetes.io/component: automation
+spec:
+  schedule: "0 7 * * 1-5"  # 7 AM on weekdays
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: scaler
+            image: bitnami/kubectl:latest
+            command:
+            - /bin/bash
+            - -c
+            - |
+              # Scale up backend for morning rush
+              kubectl scale deployment livyflow-backend --replicas=8
+              
+              # Scale up frontend
+              kubectl scale deployment livyflow-frontend --replicas=4
+              
+              # Update HPA min replicas
+              kubectl patch hpa livyflow-backend-hpa -p '{"spec":{"minReplicas":6}}'
+              
+              echo "Morning scale-up completed"
+            env:
+            - name: KUBECONFIG
+              value: /var/run/secrets/kubernetes.io/serviceaccount
+          restartPolicy: OnFailure
+          serviceAccountName: scaler-service-account
+
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: evening-scale-down
+  namespace: livyflow-prod
+spec:
+  schedule: "0 22 * * *"  # 10 PM daily
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: scaler
+            image: bitnami/kubectl:latest
+            command:
+            - /bin/bash
+            - -c
+            - |
+              # Scale down for night time
+              kubectl patch hpa livyflow-backend-hpa -p '{"spec":{"minReplicas":2}}'
+              kubectl patch hpa livyflow-frontend-hpa -p '{"spec":{"minReplicas":2}}'
+              
+              echo "Evening scale-down completed"
+          restartPolicy: OnFailure
+          serviceAccountName: scaler-service-account
+
+---
+# Service Account for automated scaling
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: scaler-service-account
+  namespace: livyflow-prod
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  namespace: livyflow-prod
+  name: scaler-role
+rules:
+- apiGroups: ["apps"]
+  resources: ["deployments", "deployments/scale"]
+  verbs: ["get", "list", "patch", "update"]
+- apiGroups: ["autoscaling"]
+  resources: ["horizontalpodautoscalers"]
+  verbs: ["get", "list", "patch", "update"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: scaler-role-binding
+  namespace: livyflow-prod
+subjects:
+- kind: ServiceAccount
+  name: scaler-service-account
+  namespace: livyflow-prod
+roleRef:
+  kind: Role
+  name: scaler-role
+  apiGroup: rbac.authorization.k8s.io
+
+---
+# Pod Autoscaling based on custom business metrics
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: livyflow-business-metrics-hpa
+  namespace: livyflow-prod
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: livyflow-backend
+  minReplicas: 2
+  maxReplicas: 15
+  metrics:
+  # Scale based on active user sessions
+  - type: External
+    external:
+      metric:
+        name: active_user_sessions
+        selector:
+          matchLabels:
+            app: livyflow
+      target:
+        type: AverageValue
+        averageValue: "500"  # Scale when >500 sessions per pod
+  
+  # Scale based on transaction processing rate
+  - type: External
+    external:
+      metric:
+        name: transaction_processing_rate
+      target:
+        type: AverageValue
+        averageValue: "50"  # 50 transactions per second per pod
+  
+  # Scale based on Plaid API rate limit usage
+  - type: External
+    external:
+      metric:
+        name: plaid_api_usage_percentage
+      target:
+        type: AverageValue
+        averageValue: "70"  # Scale when API usage >70%
+  
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 120
+      policies:
+      - type: Percent
+        value: 50
+        periodSeconds: 60
+      selectPolicy: Max
+    scaleDown:
+      stabilizationWindowSeconds: 600  # 10 minutes
+      policies:
+      - type: Percent
+        value: 25
+        periodSeconds: 300
+      selectPolicy: Min
+
+---
+# Multi-dimensional Pod Autoscaler (MPDA) for complex scaling
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mpda-config
+  namespace: livyflow-prod
+data:
+  scaling-policy.yaml: |
+    scalingPolicy:
+      # Peak hours (8 AM - 8 PM EST)
+      - timeWindow: "08:00-20:00"
+        timezone: "America/New_York"
+        days: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
+        scalingRules:
+          - metric: "cpu_utilization"
+            threshold: 60
+            scaleUpFactor: 2
+            scaleDownFactor: 0.8
+          - metric: "memory_utilization"
+            threshold: 70
+            scaleUpFactor: 1.5
+          - metric: "request_rate"
+            threshold: 1000
+            scaleUpFactor: 2
+      
+      # Off-peak hours
+      - timeWindow: "20:00-08:00"
+        timezone: "America/New_York"
+        scalingRules:
+          - metric: "cpu_utilization"
+            threshold: 80
+            scaleUpFactor: 1.2
+            scaleDownFactor: 0.5
+          - metric: "memory_utilization"
+            threshold: 85
+            scaleUpFactor: 1.2
+      
+      # Weekend scaling
+      - days: ["Saturday", "Sunday"]
+        scalingRules:
+          - metric: "cpu_utilization"
+            threshold: 75
+            scaleUpFactor: 1.5
+            scaleDownFactor: 0.6
+          - metric: "request_rate"
+            threshold: 500
+            scaleUpFactor: 1.5
+
+---
+# Monitoring for autoscaling decisions
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: autoscaling-metrics
+  namespace: livyflow-monitoring
+spec:
+  selector:
+    matchLabels:
+      app: autoscaling-controller
+  endpoints:
+  - port: metrics
+    interval: 30s
+    path: /metrics
+
+---
+# Alerting rules for autoscaling events
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: autoscaling-alerts
+  namespace: livyflow-monitoring
+spec:
+  groups:
+  - name: autoscaling.rules
+    rules:
+    - alert: HPAScalingTooFrequent
+      expr: increase(hpa_scaling_events_total[15m]) > 10
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: "HPA scaling too frequently"
+        description: "HPA {{ $labels.hpa }} has scaled {{ $value }} times in the last 15 minutes"
+    
+    - alert: HPAMaxReplicasReached
+      expr: hpa_current_replicas >= hpa_max_replicas
+      for: 5m
+      labels:
+        severity: critical
+      annotations:
+        summary: "HPA reached maximum replicas"
+        description: "HPA {{ $labels.hpa }} has reached its maximum replica count of {{ $value }}"
+    
+    - alert: ClusterAutoscalerNodeGroupAtMax
+      expr: cluster_autoscaler_nodes_count >= cluster_autoscaler_max_nodes_count
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: "Cluster Autoscaler reached maximum nodes"
+        description: "Node group {{ $labels.node_group }} has reached its maximum node count"
+    
+    - alert: PodsPendingForTooLong
+      expr: kube_pod_status_phase{phase="Pending"} > 0
+      for: 10m
+      labels:
+        severity: warning
+      annotations:
+        summary: "Pods pending for too long"
+        description: "Pod {{ $labels.pod }} in namespace {{ $labels.namespace }} has been pending for more than 10 minutes"

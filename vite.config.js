@@ -9,6 +9,26 @@ export default defineConfig({
       '@': '/src'
     }
   },
+  build: {
+    // Optimize for mobile performance
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          vendor: ['react', 'react-dom'],
+          charts: ['recharts'],
+          icons: ['lucide-react'],
+          router: ['react-router-dom'],
+          firebase: ['firebase/app', 'firebase/auth', 'firebase/firestore']
+        }
+      }
+    },
+    // Compress assets
+    minify: 'esbuild',
+    sourcemap: false,
+    target: ['es2020', 'edge88', 'firefox78', 'chrome87', 'safari13.1'],
+    // Optimize chunk size for mobile
+    chunkSizeWarningLimit: 500
+  },
   esbuild: {
     loader: 'jsx',
     include: /.*\.[tj]sx?$/,
@@ -29,6 +49,22 @@ export default defineConfig({
         changeOrigin: true,
         secure: false,
       },
+    },
+  },
+  test: {
+    globals: true,
+    environment: 'jsdom',
+    setupFiles: ['./src/test/setup.js'],
+    css: true,
+    coverage: {
+      reporter: ['text', 'json', 'html'],
+      exclude: [
+        'node_modules/',
+        'src/test/',
+        '**/*.d.ts',
+        '**/*.config.js',
+        '**/*.config.ts',
+      ],
     },
   },
 }) 

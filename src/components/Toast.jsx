@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { CheckCircle, XCircle, AlertTriangle, Info, X } from 'lucide-react';
 
 const Toast = ({ message, type = 'info', duration = 5000, onClose }) => {
   const [isVisible, setIsVisible] = useState(true);
@@ -31,14 +32,28 @@ const Toast = ({ message, type = 'info', duration = 5000, onClose }) => {
   const getIcon = () => {
     switch (type) {
       case 'success':
-        return '✅';
+        return <CheckCircle className="w-5 h-5" aria-hidden="true" />;
       case 'error':
-        return '❌';
+        return <XCircle className="w-5 h-5" aria-hidden="true" />;
       case 'warning':
-        return '⚠️';
+        return <AlertTriangle className="w-5 h-5" aria-hidden="true" />;
       case 'info':
       default:
-        return 'ℹ️';
+        return <Info className="w-5 h-5" aria-hidden="true" />;
+    }
+  };
+
+  const getAriaLabel = () => {
+    switch (type) {
+      case 'success':
+        return 'Success notification';
+      case 'error':
+        return 'Error notification';
+      case 'warning':
+        return 'Warning notification';
+      case 'info':
+      default:
+        return 'Information notification';
     }
   };
 
@@ -47,10 +62,15 @@ const Toast = ({ message, type = 'info', duration = 5000, onClose }) => {
   }
 
   return (
-    <div className={getToastStyles()}>
+    <div 
+      className={getToastStyles()}
+      role="alert"
+      aria-live="polite"
+      aria-label={getAriaLabel()}
+    >
       <div className="flex items-start">
         <div className="flex-shrink-0 mr-3">
-          <span className="text-lg">{getIcon()}</span>
+          {getIcon()}
         </div>
         <div className="flex-1">
           <p className="text-sm font-medium">{message}</p>
@@ -61,9 +81,10 @@ const Toast = ({ message, type = 'info', duration = 5000, onClose }) => {
               setIsVisible(false);
               setTimeout(() => onClose(), 300);
             }}
-            className="text-white hover:text-gray-200 focus:outline-none"
+            className="text-white hover:text-gray-200 focus:outline-none focus:ring-2 focus:ring-white focus:ring-opacity-50 rounded p-1 transition-colors"
+            aria-label="Close notification"
           >
-            ✕
+            <X className="w-4 h-4" aria-hidden="true" />
           </button>
         </div>
       </div>

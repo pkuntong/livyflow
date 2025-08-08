@@ -1,0 +1,116 @@
+version: 2
+updates:
+  # Frontend dependencies (npm)
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+    open-pull-requests-limit: 5
+    reviewers:
+      - "@gnotnuk"
+    assignees:
+      - "@gnotnuk"
+    commit-message:
+      prefix: "deps"
+      prefix-development: "deps-dev"
+      include: "scope"
+    labels:
+      - "dependencies"
+      - "frontend"
+    ignore:
+      # Ignore major version updates for React to prevent breaking changes
+      - dependency-name: "react"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "react-dom"
+        update-types: ["version-update:semver-major"]
+    groups:
+      react-ecosystem:
+        patterns:
+          - "react*"
+          - "@types/react*"
+      testing-frameworks:
+        patterns:
+          - "vitest*"
+          - "@vitest/*"
+          - "cypress*"
+          - "@cypress/*"
+          - "@testing-library/*"
+      build-tools:
+        patterns:
+          - "vite*"
+          - "@vitejs/*"
+          - "eslint*"
+          - "tailwindcss*"
+          - "postcss*"
+          - "autoprefixer"
+
+  # Backend dependencies (pip)
+  - package-ecosystem: "pip"
+    directory: "/backend"
+    schedule:
+      interval: "weekly"
+      day: "tuesday"
+      time: "09:00"
+    open-pull-requests-limit: 5
+    reviewers:
+      - "@gnotnuk"
+    assignees:
+      - "@gnotnuk"
+    commit-message:
+      prefix: "deps"
+      include: "scope"
+    labels:
+      - "dependencies"
+      - "backend"
+      - "python"
+    ignore:
+      # Ignore patch updates for critical security dependencies to avoid noise
+      - dependency-name: "fastapi"
+        update-types: ["version-update:semver-patch"]
+    groups:
+      fastapi-ecosystem:
+        patterns:
+          - "fastapi*"
+          - "uvicorn*"
+          - "pydantic*"
+      security-dependencies:
+        patterns:
+          - "python-jose*"
+          - "passlib*"
+          - "PyJWT*"
+      data-processing:
+        patterns:
+          - "pandas*"
+          - "numpy*"
+          - "reportlab*"
+
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "wednesday"
+      time: "09:00"
+    open-pull-requests-limit: 3
+    reviewers:
+      - "@gnotnuk"
+    assignees:
+      - "@gnotnuk"
+    commit-message:
+      prefix: "ci"
+      include: "scope"
+    labels:
+      - "dependencies"
+      - "ci/cd"
+      - "github-actions"
+    groups:
+      actions-core:
+        patterns:
+          - "actions/*"
+      security-actions:
+        patterns:
+          - "github/codeql-action*"
+          - "ossf/scorecard-action*"
+          - "aquasecurity/trivy-action*"

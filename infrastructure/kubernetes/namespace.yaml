@@ -1,0 +1,42 @@
+# Kubernetes namespace for LivyFlow application
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: livyflow-prod
+  labels:
+    name: livyflow-prod
+    app.kubernetes.io/name: livyflow
+    app.kubernetes.io/instance: prod
+    app.kubernetes.io/version: "1.0"
+    app.kubernetes.io/component: namespace
+    app.kubernetes.io/part-of: livyflow
+    app.kubernetes.io/managed-by: kubernetes
+    environment: production
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: livyflow-staging
+  labels:
+    name: livyflow-staging
+    app.kubernetes.io/name: livyflow
+    app.kubernetes.io/instance: staging
+    app.kubernetes.io/version: "1.0"
+    app.kubernetes.io/component: namespace
+    app.kubernetes.io/part-of: livyflow
+    app.kubernetes.io/managed-by: kubernetes
+    environment: staging
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: livyflow-monitoring
+  labels:
+    name: livyflow-monitoring
+    app.kubernetes.io/name: monitoring
+    app.kubernetes.io/instance: livyflow
+    app.kubernetes.io/version: "1.0"
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/part-of: livyflow
+    app.kubernetes.io/managed-by: kubernetes
+    environment: shared

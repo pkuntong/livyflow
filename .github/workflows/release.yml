@@ -1,0 +1,343 @@
+name: Release Management
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_type:
+        description: 'Release type'
+        required: true
+        default: 'patch'
+        type: choice
+        options:
+        - major
+        - minor
+        - patch
+        - prerelease
+      prerelease_identifier:
+        description: 'Pre-release identifier (alpha, beta, rc)'
+        required: false
+        default: 'beta'
+        type: choice
+        options:
+        - alpha
+        - beta
+        - rc
+      skip_tests:
+        description: 'Skip tests (only for hotfixes)'
+        required: false
+        default: false
+        type: boolean
+
+env:
+  NODE_VERSION: '18'
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  validate-release:
+    name: Validate Release Conditions
+    runs-on: ubuntu-latest
+    outputs:
+      should_release: ${{ steps.validation.outputs.should_release }}
+      current_version: ${{ steps.get_version.outputs.current_version }}
+      new_version: ${{ steps.calculate_version.outputs.new_version }}
+      
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Get current version
+        id: get_version
+        run: |
+          CURRENT_VERSION=$(node -p "require('./package.json').version")
+          echo "current_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+          echo "Current version: $CURRENT_VERSION"
+
+      - name: Calculate new version
+        id: calculate_version
+        run: |
+          npm install semver
+          
+          CURRENT_VERSION=${{ steps.get_version.outputs.current_version }}
+          RELEASE_TYPE="${{ github.event.inputs.release_type }}"
+          
+          if [[ "$RELEASE_TYPE" == "prerelease" ]]; then
+            NEW_VERSION=$(node -p "require('semver').inc('$CURRENT_VERSION', 'prerelease', '${{ github.event.inputs.prerelease_identifier }}')")
+          else
+            NEW_VERSION=$(node -p "require('semver').inc('$CURRENT_VERSION', '$RELEASE_TYPE')")
+          fi
+          
+          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "New version will be: $NEW_VERSION"
+
+      - name: Validate release conditions
+        id: validation
+        run: |
+          # Check if we're on main branch for production releases
+          if [[ "${{ github.ref_name }}" != "main" && "${{ github.event.inputs.release_type }}" != "prerelease" ]]; then
+            echo "Production releases must be from main branch"
+            exit 1
+          fi
+          
+          # Check if there are uncommitted changes
+          if [[ -n $(git status --porcelain) ]]; then
+            echo "Repository has uncommitted changes"
+            exit 1
+          fi
+          
+          echo "should_release=true" >> $GITHUB_OUTPUT
+
+  run-tests:
+    name: Run Full Test Suite
+    runs-on: ubuntu-latest
+    needs: validate-release
+    if: needs.validate-release.outputs.should_release == 'true' && !inputs.skip_tests
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          npm ci
+          cd backend && pip install -r requirements.txt
+
+      - name: Run comprehensive tests
+        run: |
+          npm run lint
+          npm run test:run
+          npm run build
+          
+      - name: Run E2E tests
+        run: |
+          npm run dev &
+          sleep 30
+          npm run test:e2e:headless
+
+  create-release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    needs: [validate-release, run-tests]
+    if: always() && needs.validate-release.outputs.should_release == 'true' && (needs.run-tests.result == 'success' || inputs.skip_tests)
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.PAT_TOKEN }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Update version in package.json
+        run: |
+          NEW_VERSION="${{ needs.validate-release.outputs.new_version }}"
+          npm version $NEW_VERSION --no-git-tag-version
+          echo "Updated package.json to version $NEW_VERSION"
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          # Install conventional-changelog-cli
+          npm install -g conventional-changelog-cli
+          
+          # Generate changelog
+          conventional-changelog -p angular -i CHANGELOG.md -s -r 0
+          
+          # Get the changelog for this release
+          CHANGELOG_CONTENT=$(conventional-changelog -p angular -r 1)
+          echo "changelog_content<<EOF" >> $GITHUB_OUTPUT
+          echo "$CHANGELOG_CONTENT" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Update version in backend
+        run: |
+          NEW_VERSION="${{ needs.validate-release.outputs.new_version }}"
+          # Update version in backend files if they exist
+          if [ -f backend/app/__init__.py ]; then
+            sed -i "s/__version__ = .*/__version__ = \"$NEW_VERSION\"/" backend/app/__init__.py
+          fi
+
+      - name: Commit changes
+        run: |
+          NEW_VERSION="${{ needs.validate-release.outputs.new_version }}"
+          git add .
+          git commit -m "chore: release version $NEW_VERSION"
+          git push origin ${{ github.ref_name }}
+
+      - name: Create Git tag
+        run: |
+          NEW_VERSION="${{ needs.validate-release.outputs.new_version }}"
+          git tag -a "v$NEW_VERSION" -m "Release version $NEW_VERSION"
+          git push origin "v$NEW_VERSION"
+
+      - name: Create GitHub Release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: v${{ needs.validate-release.outputs.new_version }}
+          release_name: Release v${{ needs.validate-release.outputs.new_version }}
+          body: |
+            ## 🚀 Release v${{ needs.validate-release.outputs.new_version }}
+            
+            **Release Type:** ${{ github.event.inputs.release_type }}
+            **Previous Version:** v${{ needs.validate-release.outputs.current_version }}
+            
+            ### Changes
+            ${{ steps.changelog.outputs.changelog_content }}
+            
+            ### Installation
+            ```bash
+            npm install livyflow@${{ needs.validate-release.outputs.new_version }}
+            ```
+            
+            ### Deployment
+            - **Frontend:** Automatically deployed to production
+            - **Backend:** Requires manual deployment approval
+            
+            ---
+            **Full Changelog:** https://github.com/${{ github.repository }}/compare/v${{ needs.validate-release.outputs.current_version }}...v${{ needs.validate-release.outputs.new_version }}
+          draft: false
+          prerelease: ${{ github.event.inputs.release_type == 'prerelease' }}
+
+  build-release-artifacts:
+    name: Build Release Artifacts
+    runs-on: ubuntu-latest
+    needs: [create-release]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: v${{ needs.validate-release.outputs.new_version }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          npm ci
+          cd backend && pip install -r requirements.txt
+
+      - name: Build production artifacts
+        run: |
+          npm run build:production
+          
+      - name: Create release package
+        run: |
+          mkdir -p release-artifacts
+          
+          # Frontend build
+          tar -czf release-artifacts/frontend-v${{ needs.validate-release.outputs.new_version }}.tar.gz -C dist .
+          
+          # Backend package
+          tar -czf release-artifacts/backend-v${{ needs.validate-release.outputs.new_version }}.tar.gz backend/
+          
+          # Source code
+          git archive --format=tar.gz --prefix=livyflow-${{ needs.validate-release.outputs.new_version }}/ HEAD > release-artifacts/source-v${{ needs.validate-release.outputs.new_version }}.tar.gz
+
+      - name: Generate checksums
+        run: |
+          cd release-artifacts
+          sha256sum *.tar.gz > checksums.sha256
+          cat checksums.sha256
+
+      - name: Upload release artifacts
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: release-artifacts/
+          asset_name: release-artifacts
+          asset_content_type: application/zip
+
+  trigger-deployment:
+    name: Trigger Production Deployment
+    runs-on: ubuntu-latest
+    needs: [create-release, build-release-artifacts]
+    if: github.event.inputs.release_type != 'prerelease'
+    
+    steps:
+      - name: Trigger production deployment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'deploy-production.yml',
+              ref: 'v${{ needs.validate-release.outputs.new_version }}'
+            });
+
+  post-release-notification:
+    name: Post-Release Notifications
+    runs-on: ubuntu-latest
+    needs: [validate-release, create-release, build-release-artifacts]
+    if: always()
+    
+    steps:
+      - name: Create release summary
+        run: |
+          echo "## 🎉 Release Summary" >> $GITHUB_STEP_SUMMARY
+          echo "**New Version:** v${{ needs.validate-release.outputs.new_version }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Previous Version:** v${{ needs.validate-release.outputs.current_version }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Release Type:** ${{ github.event.inputs.release_type }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Released by:** ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Release Date:** $(date)" >> $GITHUB_STEP_SUMMARY
+          
+          if [[ "${{ needs.create-release.result }}" == "success" ]]; then
+            echo "**Status:** ✅ Successfully released" >> $GITHUB_STEP_SUMMARY
+            echo "**GitHub Release:** https://github.com/${{ github.repository }}/releases/tag/v${{ needs.validate-release.outputs.new_version }}" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "**Status:** ❌ Release failed" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Notify team
+        if: needs.create-release.result == 'success'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: '🎉 Release v${{ needs.validate-release.outputs.new_version }} Published',
+              body: `A new version of LivyFlow has been released!\n\n**Version:** v${{ needs.validate-release.outputs.new_version }}\n**Type:** ${{ github.event.inputs.release_type }}\n**Released by:** ${{ github.actor }}\n\n**Release Notes:** https://github.com/${{ github.repository }}/releases/tag/v${{ needs.validate-release.outputs.new_version }}\n\nThe production deployment will be triggered automatically for non-prerelease versions.`,
+              labels: ['release', 'announcement']
+            });

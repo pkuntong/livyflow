@@ -1,0 +1,323 @@
+name: Build and Deployment Notifications
+
+on:
+  workflow_run:
+    workflows:
+      - "CI/CD Pipeline"
+      - "Deploy to Staging"
+      - "Deploy to Production"
+      - "Security Scanning"
+      - "Code Quality Analysis"
+      - "Release Management"
+    types:
+      - completed
+
+jobs:
+  notify-build-status:
+    name: Notify Build Status
+    runs-on: ubuntu-latest
+    if: always()
+    
+    steps:
+      - name: Get workflow info
+        id: workflow_info
+        run: |
+          WORKFLOW_NAME="${{ github.event.workflow_run.name }}"
+          WORKFLOW_STATUS="${{ github.event.workflow_run.conclusion }}"
+          WORKFLOW_URL="${{ github.event.workflow_run.html_url }}"
+          BRANCH_NAME="${{ github.event.workflow_run.head_branch }}"
+          COMMIT_SHA="${{ github.event.workflow_run.head_sha }}"
+          ACTOR="${{ github.event.workflow_run.actor.login }}"
+          
+          echo "workflow_name=$WORKFLOW_NAME" >> $GITHUB_OUTPUT
+          echo "workflow_status=$WORKFLOW_STATUS" >> $GITHUB_OUTPUT
+          echo "workflow_url=$WORKFLOW_URL" >> $GITHUB_OUTPUT
+          echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
+          echo "commit_sha=$COMMIT_SHA" >> $GITHUB_OUTPUT
+          echo "actor=$ACTOR" >> $GITHUB_OUTPUT
+
+      - name: Determine notification type
+        id: notification_type
+        run: |
+          WORKFLOW_NAME="${{ steps.workflow_info.outputs.workflow_name }}"
+          STATUS="${{ steps.workflow_info.outputs.workflow_status }}"
+          BRANCH="${{ steps.workflow_info.outputs.branch_name }}"
+          
+          # Determine criticality and notification type
+          CRITICAL=false
+          NOTIFY_TEAM=false
+          
+          # Critical workflows that always notify
+          if [[ "$WORKFLOW_NAME" == "Deploy to Production" || "$WORKFLOW_NAME" == "Security Scanning" ]]; then
+            CRITICAL=true
+            NOTIFY_TEAM=true
+          fi
+          
+          # Failed builds on main branch are critical
+          if [[ "$STATUS" == "failure" && "$BRANCH" == "main" ]]; then
+            CRITICAL=true
+            NOTIFY_TEAM=true
+          fi
+          
+          # Staging deployments notify on both success and failure
+          if [[ "$WORKFLOW_NAME" == "Deploy to Staging" ]]; then
+            NOTIFY_TEAM=true
+          fi
+          
+          echo "critical=$CRITICAL" >> $GITHUB_OUTPUT
+          echo "notify_team=$NOTIFY_TEAM" >> $GITHUB_OUTPUT
+
+      - name: Create notification message
+        id: message
+        run: |
+          WORKFLOW_NAME="${{ steps.workflow_info.outputs.workflow_name }}"
+          STATUS="${{ steps.workflow_info.outputs.workflow_status }}"
+          BRANCH="${{ steps.workflow_info.outputs.branch_name }}"
+          COMMIT="${{ steps.workflow_info.outputs.commit_sha }}"
+          ACTOR="${{ steps.workflow_info.outputs.actor }}"
+          URL="${{ steps.workflow_info.outputs.workflow_url }}"
+          
+          # Determine emoji based on status
+          if [[ "$STATUS" == "success" ]]; then
+            EMOJI="✅"
+            STATUS_TEXT="succeeded"
+          elif [[ "$STATUS" == "failure" ]]; then
+            EMOJI="❌"
+            STATUS_TEXT="failed"
+          elif [[ "$STATUS" == "cancelled" ]]; then
+            EMOJI="⏹️"
+            STATUS_TEXT="was cancelled"
+          else
+            EMOJI="⚠️"
+            STATUS_TEXT="completed with status: $STATUS"
+          fi
+          
+          # Create message
+          MESSAGE="$EMOJI **$WORKFLOW_NAME** $STATUS_TEXT"
+          MESSAGE="$MESSAGE\n📍 **Branch:** \`$BRANCH\`"
+          MESSAGE="$MESSAGE\n👤 **Triggered by:** $ACTOR"
+          MESSAGE="$MESSAGE\n🔗 **Details:** [View Workflow]($URL)"
+          MESSAGE="$MESSAGE\n📝 **Commit:** \`${COMMIT:0:7}\`"
+          MESSAGE="$MESSAGE\n⏰ **Time:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+          
+          # Add specific messages based on workflow type
+          if [[ "$WORKFLOW_NAME" == "Deploy to Production" ]]; then
+            if [[ "$STATUS" == "success" ]]; then
+              MESSAGE="$MESSAGE\n\n🚀 Production deployment completed successfully!"
+            else
+              MESSAGE="$MESSAGE\n\n🚨 **URGENT:** Production deployment failed! Immediate attention required."
+            fi
+          elif [[ "$WORKFLOW_NAME" == "Deploy to Staging" ]]; then
+            if [[ "$STATUS" == "success" ]]; then
+              MESSAGE="$MESSAGE\n\n🧪 Staging environment updated and ready for testing."
+            else
+              MESSAGE="$MESSAGE\n\n⚠️ Staging deployment failed. Please check before promoting to production."
+            fi
+          elif [[ "$WORKFLOW_NAME" == "Security Scanning" ]]; then
+            if [[ "$STATUS" == "failure" ]]; then
+              MESSAGE="$MESSAGE\n\n🔒 Security vulnerabilities detected! Please review and address immediately."
+            fi
+          fi
+          
+          echo "message<<EOF" >> $GITHUB_OUTPUT
+          echo -e "$MESSAGE" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Post to GitHub Issues (Critical)
+        if: steps.notification_type.outputs.critical == 'true' && steps.workflow_info.outputs.workflow_status == 'failure'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const title = `🚨 Critical Build Failure: ${{ steps.workflow_info.outputs.workflow_name }}`;
+            const body = `${{ steps.message.outputs.message }}
+            
+            ## Action Required
+            This is a critical build failure that requires immediate attention.
+            
+            **Next Steps:**
+            1. Review the failed workflow logs
+            2. Identify and fix the root cause
+            3. Create a hotfix if necessary
+            4. Monitor subsequent builds
+            
+            **Workflow Details:**
+            - **Workflow:** ${{ steps.workflow_info.outputs.workflow_name }}
+            - **Branch:** ${{ steps.workflow_info.outputs.branch_name }}
+            - **Status:** ${{ steps.workflow_info.outputs.workflow_status }}
+            - **URL:** ${{ steps.workflow_info.outputs.workflow_url }}`;
+            
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: title,
+              body: body,
+              labels: ['urgent', 'ci/cd', 'bug'],
+              assignees: ['${{ steps.workflow_info.outputs.actor }}']
+            });
+
+      - name: Update commit status
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const status = '${{ steps.workflow_info.outputs.workflow_status }}';
+            const workflowName = '${{ steps.workflow_info.outputs.workflow_name }}';
+            const sha = '${{ steps.workflow_info.outputs.commit_sha }}';
+            
+            let state, description;
+            
+            if (status === 'success') {
+              state = 'success';
+              description = `${workflowName} completed successfully`;
+            } else if (status === 'failure') {
+              state = 'failure';
+              description = `${workflowName} failed`;
+            } else {
+              state = 'error';
+              description = `${workflowName} completed with status: ${status}`;
+            }
+            
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: sha,
+              state: state,
+              target_url: '${{ steps.workflow_info.outputs.workflow_url }}',
+              description: description,
+              context: `ci/${workflowName.toLowerCase().replace(/\s+/g, '-')}`
+            });
+
+  weekly-build-summary:
+    name: Weekly Build Summary
+    runs-on: ubuntu-latest
+    if: github.event.schedule == '0 9 * * 1' # Monday 9 AM UTC
+    
+    steps:
+      - name: Generate weekly summary
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const oneWeekAgo = new Date();
+            oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+            
+            // Get workflow runs from the past week
+            const { data: workflowRuns } = await github.rest.actions.listWorkflowRunsForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              created: `>=${oneWeekAgo.toISOString().split('T')[0]}`,
+              per_page: 100
+            });
+            
+            // Analyze the data
+            const summary = {
+              total: workflowRuns.workflow_runs.length,
+              successful: workflowRuns.workflow_runs.filter(run => run.conclusion === 'success').length,
+              failed: workflowRuns.workflow_runs.filter(run => run.conclusion === 'failure').length,
+              cancelled: workflowRuns.workflow_runs.filter(run => run.conclusion === 'cancelled').length
+            };
+            
+            const successRate = ((summary.successful / summary.total) * 100).toFixed(1);
+            
+            // Group by workflow
+            const workflowStats = {};
+            workflowRuns.workflow_runs.forEach(run => {
+              if (!workflowStats[run.name]) {
+                workflowStats[run.name] = { total: 0, success: 0, failure: 0 };
+              }
+              workflowStats[run.name].total++;
+              if (run.conclusion === 'success') workflowStats[run.name].success++;
+              if (run.conclusion === 'failure') workflowStats[run.name].failure++;
+            });
+            
+            // Create summary report
+            let report = `## 📊 Weekly CI/CD Summary\n`;
+            report += `**Period:** ${oneWeekAgo.toISOString().split('T')[0]} - ${new Date().toISOString().split('T')[0]}\n\n`;
+            report += `### Overall Stats\n`;
+            report += `- **Total Runs:** ${summary.total}\n`;
+            report += `- **Success Rate:** ${successRate}%\n`;
+            report += `- **Successful:** ${summary.successful}\n`;
+            report += `- **Failed:** ${summary.failed}\n`;
+            report += `- **Cancelled:** ${summary.cancelled}\n\n`;
+            
+            report += `### Workflow Breakdown\n`;
+            report += `| Workflow | Total | Success | Failure | Success Rate |\n`;
+            report += `|----------|-------|---------|---------|-------------|\n`;
+            
+            Object.entries(workflowStats).forEach(([name, stats]) => {
+              const rate = ((stats.success / stats.total) * 100).toFixed(1);
+              report += `| ${name} | ${stats.total} | ${stats.success} | ${stats.failure} | ${rate}% |\n`;
+            });
+            
+            // Create issue with summary
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `📊 Weekly CI/CD Summary - ${new Date().toISOString().split('T')[0]}`,
+              body: report,
+              labels: ['report', 'ci/cd', 'weekly-summary']
+            });
+
+  deployment-health-check:
+    name: Deployment Health Check
+    runs-on: ubuntu-latest
+    if: github.event.workflow_run.name == 'Deploy to Production' && github.event.workflow_run.conclusion == 'success'
+    
+    steps:
+      - name: Wait for deployment propagation
+        run: sleep 60
+
+      - name: Check production health
+        run: |
+          # Health check endpoints
+          FRONTEND_URL="${{ secrets.PRODUCTION_DOMAIN }}"
+          API_URL="${{ secrets.PRODUCTION_API_URL }}"
+          
+          # Check frontend
+          if curl -f "$FRONTEND_URL" > /dev/null 2>&1; then
+            echo "✅ Frontend is healthy"
+            FRONTEND_STATUS="✅ Healthy"
+          else
+            echo "❌ Frontend health check failed"
+            FRONTEND_STATUS="❌ Failed"
+          fi
+          
+          # Check backend API
+          if curl -f "$API_URL/health" > /dev/null 2>&1; then
+            echo "✅ Backend API is healthy"
+            API_STATUS="✅ Healthy"
+          else
+            echo "❌ Backend API health check failed"
+            API_STATUS="❌ Failed"
+          fi
+          
+          # Create health check report
+          echo "FRONTEND_STATUS=$FRONTEND_STATUS" >> $GITHUB_ENV
+          echo "API_STATUS=$API_STATUS" >> $GITHUB_ENV
+
+      - name: Post health check results
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const frontendStatus = process.env.FRONTEND_STATUS;
+            const apiStatus = process.env.API_STATUS;
+            
+            const message = `## 🏥 Post-Deployment Health Check
+            
+            **Deployment:** Production
+            **Time:** ${new Date().toISOString()}
+            
+            | Service | Status |
+            |---------|---------|
+            | Frontend | ${frontendStatus} |
+            | Backend API | ${apiStatus} |
+            
+            **URLs:**
+            - Frontend: ${{ secrets.PRODUCTION_DOMAIN }}
+            - API: ${{ secrets.PRODUCTION_API_URL }}`;
+            
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: '🏥 Production Health Check - ' + new Date().toISOString().split('T')[0],
+              body: message,
+              labels: ['health-check', 'production', 'monitoring']
+            });

@@ -1,0 +1,321 @@
+# Kubernetes Services for LivyFlow
+
+# Backend service with load balancing
+apiVersion: v1
+kind: Service
+metadata:
+  name: livyflow-backend
+  namespace: livyflow-prod
+  labels:
+    app.kubernetes.io/name: livyflow-backend
+    app.kubernetes.io/instance: prod
+    app.kubernetes.io/component: backend-service
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+    service.beta.kubernetes.io/aws-load-balancer-backend-protocol: "http"
+    service.beta.kubernetes.io/aws-load-balancer-healthcheck-path: "/api/health"
+    service.beta.kubernetes.io/aws-load-balancer-healthcheck-interval: "10"
+    service.beta.kubernetes.io/aws-load-balancer-healthcheck-timeout: "5"
+    service.beta.kubernetes.io/aws-load-balancer-healthy-threshold: "2"
+    service.beta.kubernetes.io/aws-load-balancer-unhealthy-threshold: "3"
+spec:
+  type: LoadBalancer
+  selector:
+    app.kubernetes.io/name: livyflow-backend
+    app.kubernetes.io/instance: prod
+  ports:
+  - name: http
+    port: 80
+    targetPort: 8000
+    protocol: TCP
+  - name: metrics
+    port: 9090
+    targetPort: 9090
+    protocol: TCP
+  sessionAffinity: None
+  loadBalancerSourceRanges:
+  - 10.0.0.0/8
+  - 172.16.0.0/12
+  - 192.168.0.0/16
+
+---
+# Frontend service
+apiVersion: v1
+kind: Service
+metadata:
+  name: livyflow-frontend
+  namespace: livyflow-prod
+  labels:
+    app.kubernetes.io/name: livyflow-frontend
+    app.kubernetes.io/instance: prod
+    app.kubernetes.io/component: frontend-service
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: livyflow-frontend
+    app.kubernetes.io/instance: prod
+  ports:
+  - name: http
+    port: 80
+    targetPort: 8080
+    protocol: TCP
+
+---
+# Ingress with AWS Load Balancer Controller
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: livyflow-ingress
+  namespace: livyflow-prod
+  labels:
+    app.kubernetes.io/name: livyflow-ingress
+    app.kubernetes.io/instance: prod
+  annotations:
+    # AWS Load Balancer Controller annotations
+    kubernetes.io/ingress.class: alb
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/backend-protocol: HTTP
+    
+    # SSL/TLS configuration
+    alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:us-east-1:ACCOUNT_ID:certificate/CERTIFICATE_ID
+    alb.ingress.kubernetes.io/ssl-policy: ELBSecurityPolicy-TLS-1-2-2017-01
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}, {"HTTPS": 443}]'
+    alb.ingress.kubernetes.io/ssl-redirect: '443'
+    
+    # Health checks
+    alb.ingress.kubernetes.io/healthcheck-path: /health
+    alb.ingress.kubernetes.io/healthcheck-interval-seconds: '10'
+    alb.ingress.kubernetes.io/healthcheck-timeout-seconds: '5'
+    alb.ingress.kubernetes.io/healthy-threshold-count: '2'
+    alb.ingress.kubernetes.io/unhealthy-threshold-count: '3'
+    
+    # Load balancer attributes
+    alb.ingress.kubernetes.io/load-balancer-attributes: >
+      idle_timeout.timeout_seconds=60,
+      routing.http.drop_invalid_header_fields.enabled=true,
+      routing.http.preserve_host_header.enabled=true,
+      routing.http.x_amzn_trace_id.enabled=true
+    
+    # WAF association
+    alb.ingress.kubernetes.io/wafv2-acl-arn: arn:aws:wafv2:us-east-1:ACCOUNT_ID:regional/webacl/livyflow-waf-prod/WAF_ID
+    
+    # Rate limiting
+    nginx.ingress.kubernetes.io/rate-limit-rpm: "100"
+    nginx.ingress.kubernetes.io/rate-limit-connections: "10"
+spec:
+  rules:
+  - host: livyflow.com
+    http:
+      paths:
+      - path: /api
+        pathType: Prefix
+        backend:
+          service:
+            name: livyflow-backend
+            port:
+              number: 80
+      - path: /metrics
+        pathType: Prefix
+        backend:
+          service:
+            name: livyflow-backend
+            port:
+              number: 9090
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: livyflow-frontend
+            port:
+              number: 80
+  - host: www.livyflow.com
+    http:
+      paths:
+      - path: /api
+        pathType: Prefix
+        backend:
+          service:
+            name: livyflow-backend
+            port:
+              number: 80
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: livyflow-frontend
+            port:
+              number: 80
+  tls:
+  - hosts:
+    - livyflow.com
+    - www.livyflow.com
+    secretName: livyflow-tls
+
+---
+# Service for PgBouncer (Database Connection Pooler)
+apiVersion: v1
+kind: Service
+metadata:
+  name: pgbouncer
+  namespace: livyflow-prod
+  labels:
+    app.kubernetes.io/name: pgbouncer
+    app.kubernetes.io/instance: prod
+    app.kubernetes.io/component: database-proxy
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: pgbouncer
+    app.kubernetes.io/instance: prod
+  ports:
+  - name: postgresql
+    port: 5432
+    targetPort: 5432
+    protocol: TCP
+  sessionAffinity: ClientIP
+  sessionAffinityConfig:
+    clientIP:
+      timeoutSeconds: 3600
+
+---
+# Redis service for caching
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-cluster
+  namespace: livyflow-prod
+  labels:
+    app.kubernetes.io/name: redis-cluster
+    app.kubernetes.io/instance: prod
+    app.kubernetes.io/component: cache
+spec:
+  type: ClusterIP
+  clusterIP: None  # Headless service for StatefulSet
+  selector:
+    app.kubernetes.io/name: redis-cluster
+    app.kubernetes.io/instance: prod
+  ports:
+  - name: redis
+    port: 6379
+    targetPort: 6379
+    protocol: TCP
+  - name: cluster-bus
+    port: 16379
+    targetPort: 16379
+    protocol: TCP
+
+---
+# Service Monitor for Prometheus scraping
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: livyflow-backend-metrics
+  namespace: livyflow-prod
+  labels:
+    app.kubernetes.io/name: livyflow-backend
+    app.kubernetes.io/instance: prod
+    app.kubernetes.io/component: monitoring
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: livyflow-backend
+      app.kubernetes.io/instance: prod
+  endpoints:
+  - port: metrics
+    interval: 30s
+    path: /metrics
+    scrapeTimeout: 10s
+    honorLabels: true
+    relabelings:
+    - sourceLabels: [__meta_kubernetes_pod_name]
+      targetLabel: pod_name
+    - sourceLabels: [__meta_kubernetes_pod_ip]
+      targetLabel: pod_ip
+
+---
+# Network Policy for security
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: livyflow-network-policy
+  namespace: livyflow-prod
+  labels:
+    app.kubernetes.io/name: livyflow
+    app.kubernetes.io/instance: prod
+    app.kubernetes.io/component: security
+spec:
+  podSelector: {}  # Apply to all pods in namespace
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: livyflow-prod
+    - namespaceSelector:
+        matchLabels:
+          name: livyflow-monitoring
+    - namespaceSelector:
+        matchLabels:
+          name: ingress-nginx
+  - from: []  # Allow ingress from ALB
+    ports:
+    - protocol: TCP
+      port: 8000
+    - protocol: TCP
+      port: 8080
+  egress:
+  - to: []  # Allow all egress (for external APIs)
+    ports:
+    - protocol: TCP
+      port: 443
+    - protocol: TCP
+      port: 80
+    - protocol: TCP
+      port: 5432  # PostgreSQL
+    - protocol: TCP
+      port: 6379  # Redis
+    - protocol: TCP
+      port: 53   # DNS
+    - protocol: UDP
+      port: 53   # DNS
+
+---
+# External service for RDS (when using endpoint)
+apiVersion: v1
+kind: Service
+metadata:
+  name: livyflow-database
+  namespace: livyflow-prod
+  labels:
+    app.kubernetes.io/name: livyflow-database
+    app.kubernetes.io/instance: prod
+    app.kubernetes.io/component: database
+spec:
+  type: ExternalName
+  externalName: livyflow-prod.cluster-xxxxx.us-east-1.rds.amazonaws.com
+  ports:
+  - name: postgresql
+    port: 5432
+    protocol: TCP
+
+---
+# External service for ElastiCache Redis
+apiVersion: v1
+kind: Service
+metadata:
+  name: livyflow-redis
+  namespace: livyflow-prod
+  labels:
+    app.kubernetes.io/name: livyflow-redis
+    app.kubernetes.io/instance: prod
+    app.kubernetes.io/component: cache
+spec:
+  type: ExternalName
+  externalName: livyflow-prod.xxxxx.cache.amazonaws.com
+  ports:
+  - name: redis
+    port: 6379
+    protocol: TCP

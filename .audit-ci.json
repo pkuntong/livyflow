@@ -1,0 +1,18 @@
+{
+  "allowlist": [],
+  "low": true,
+  "moderate": true,
+  "high": true,
+  "critical": true,
+  "report-type": "important",
+  "advisories": [],
+  "whitelist": [],
+  "skip-dev": false,
+  "path-whitelist": [
+    "node_modules"
+  ],
+  "show-found": true,
+  "show-not-found": false,
+  "registry": "https://registry.npmjs.org/",
+  "output-format": "text"
+}

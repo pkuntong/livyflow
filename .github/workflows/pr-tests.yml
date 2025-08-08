@@ -1,0 +1,262 @@
+name: Pull Request Tests
+
+on:
+  pull_request:
+    branches: [ main, develop ]
+
+env:
+  NODE_VERSION: '18'
+
+jobs:
+  changes:
+    name: Detect Changes
+    runs-on: ubuntu-latest
+    outputs:
+      frontend: ${{ steps.changes.outputs.frontend }}
+      backend: ${{ steps.changes.outputs.backend }}
+      tests: ${{ steps.changes.outputs.tests }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v2
+        id: changes
+        with:
+          filters: |
+            frontend:
+              - 'src/**'
+              - 'public/**'
+              - 'index.html'
+              - 'vite.config.js'
+              - 'tailwind.config.js'
+              - 'package.json'
+              - 'package-lock.json'
+            backend:
+              - 'backend/**'
+              - 'requirements.txt'
+            tests:
+              - 'src/**/*.test.{js,jsx,ts,tsx}'
+              - 'src/test/**'
+              - 'cypress/**'
+              - 'vitest.config.js'
+              - 'cypress.config.js'
+
+  quick-tests:
+    name: Quick Tests
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true' || needs.changes.outputs.tests == 'true'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run linting
+        run: npm run lint
+
+      - name: Run type checking
+        run: npx tsc --noEmit
+
+      - name: Run unit tests (changed files only)
+        run: npm run test:run -- --changed --passWithNoTests
+
+      - name: Build check
+        run: npm run build
+
+  component-tests:
+    name: Component Tests
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true' || needs.changes.outputs.tests == 'true'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run component tests
+        run: npm run test:run -- --run src/Pages/__tests__/ src/components/__tests__/
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: component-test-results
+          path: coverage/
+
+  visual-regression:
+    name: Visual Regression Tests
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build application
+        run: npm run build
+
+      - name: Run visual regression tests
+        run: |
+          npm run preview &
+          npx wait-on http://localhost:5173
+          npx cypress run --config video=false --spec "cypress/e2e/visual-regression/*.cy.js"
+
+      - name: Upload screenshots
+        if: failure()
+        uses: actions/upload-artifact@v3
+        with:
+          name: visual-regression-screenshots
+          path: cypress/screenshots/
+
+  code-quality:
+    name: Code Quality
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true' || needs.changes.outputs.backend == 'true'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run code quality checks
+        run: |
+          # Check for console.log statements
+          if grep -r "console\.log" src/ --exclude-dir=test; then
+            echo "❌ Found console.log statements in source code"
+            exit 1
+          fi
+          
+          # Check for TODO comments
+          TODO_COUNT=$(grep -r "TODO" src/ --exclude-dir=test | wc -l)
+          if [ "$TODO_COUNT" -gt 10 ]; then
+            echo "⚠️ Found $TODO_COUNT TODO comments. Consider addressing some before merging."
+          fi
+          
+          # Check bundle size impact
+          npm run build
+          BUNDLE_SIZE=$(du -sh dist | cut -f1)
+          echo "Bundle size: $BUNDLE_SIZE"
+
+      - name: Comment PR with bundle size
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const fs = require('fs');
+            const { execSync } = require('child_process');
+            
+            // Get bundle size
+            const bundleSize = execSync('du -sh dist').toString().split('\t')[0];
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `## Bundle Size Report\n\nBundle size: **${bundleSize}**\n\n*This comment will be updated on each push.*`
+            });
+
+  test-coverage:
+    name: Test Coverage
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.tests == 'true' || needs.changes.outputs.frontend == 'true'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests with coverage
+        run: npm run test:coverage
+
+      - name: Coverage comment
+        uses: romeovs/lcov-reporter-action@v0.3.1
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          lcov-file: ./coverage/lcov.info
+          delete-old-comments: true
+
+  pr-summary:
+    name: PR Test Summary
+    runs-on: ubuntu-latest
+    needs: [quick-tests, component-tests, visual-regression, code-quality, test-coverage]
+    if: always()
+
+    steps:
+      - name: Generate PR Summary
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const results = {
+              'Quick Tests': '${{ needs.quick-tests.result }}',
+              'Component Tests': '${{ needs.component-tests.result }}',
+              'Visual Regression': '${{ needs.visual-regression.result }}',
+              'Code Quality': '${{ needs.code-quality.result }}',
+              'Test Coverage': '${{ needs.test-coverage.result }}'
+            };
+            
+            let summary = '## 🧪 Test Results Summary\n\n';
+            let allPassed = true;
+            
+            for (const [test, result] of Object.entries(results)) {
+              const icon = result === 'success' ? '✅' : result === 'failure' ? '❌' : result === 'skipped' ? '⏭️' : '❓';
+              summary += `${icon} **${test}**: ${result}\n`;
+              if (result === 'failure') allPassed = false;
+            }
+            
+            if (allPassed) {
+              summary += '\n🎉 All tests passed! This PR is ready for review.';
+            } else {
+              summary += '\n⚠️ Some tests failed. Please review the failed checks above.';
+            }
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: summary
+            });

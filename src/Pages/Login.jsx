@@ -32,28 +32,35 @@ export default function Login() {
       <div className="max-w-md w-full bg-white rounded-xl shadow-lg p-8">
         <div className="flex flex-col items-center mb-6">
           <div className="flex items-center gap-3 mb-4">
-            <PiggyBank className="w-10 h-10 text-emerald-500" />
+            <PiggyBank className="w-10 h-10 text-emerald-500" aria-hidden="true" />
             <span className="text-3xl font-extrabold text-emerald-600 tracking-tight">LivyFlow</span>
           </div>
-          <h2 className="text-2xl font-bold text-gray-900">Sign in to your account</h2>
+          <h1 className="text-2xl font-bold text-gray-900">Sign in to your account</h1>
           <p className="text-gray-600 mt-1">
             Don't have an account?{' '}
-            <Link to="/signup" className="font-medium text-emerald-600 hover:text-emerald-500">
+            <Link 
+              to="/signup" 
+              className="font-medium text-emerald-600 hover:text-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 rounded"
+            >
               Sign up
             </Link>
           </p>
         </div>
         
         {error && (
-          <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded-lg">
+          <div 
+            className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded-lg"
+            role="alert"
+            aria-live="polite"
+          >
             {error}
           </div>
         )}
         
-        <form onSubmit={handleSubmit} className="space-y-6">
+        <form onSubmit={handleSubmit} className="space-y-6" noValidate>
           <div>
             <label htmlFor="email" className="block text-sm font-medium text-gray-700">
-              Email address
+              Email address *
             </label>
             <div className="mt-1">
               <input
@@ -64,15 +71,17 @@ export default function Login() {
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 focus:outline-none"
                 placeholder="you@example.com"
+                aria-describedby={error && error.includes('email') ? 'email-error' : undefined}
+                aria-invalid={error && error.includes('email') ? 'true' : 'false'}
               />
             </div>
           </div>
 
           <div>
             <label htmlFor="password" className="block text-sm font-medium text-gray-700">
-              Password
+              Password *
             </label>
             <div className="mt-1">
               <input
@@ -83,15 +92,21 @@ export default function Login() {
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 focus:outline-none"
                 placeholder="••••••••"
+                aria-describedby={error && error.includes('password') ? 'password-error' : undefined}
+                aria-invalid={error && error.includes('password') ? 'true' : 'false'}
               />
             </div>
           </div>
 
           <div className="flex items-center justify-between">
             <div className="text-sm">
-              <a href="#" className="font-medium text-emerald-600 hover:text-emerald-500">
+              <a 
+                href="#" 
+                className="font-medium text-emerald-600 hover:text-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 rounded"
+                aria-label="Reset your password (functionality not yet implemented)"
+              >
                 Forgot your password?
               </a>
             </div>
@@ -101,9 +116,12 @@ export default function Login() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-emerald-500 hover:bg-emerald-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-emerald-500 hover:bg-emerald-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              aria-describedby="signin-status"
             >
-              {loading ? 'Signing In...' : 'Sign In'}
+              <span id="signin-status">
+                {loading ? 'Signing In...' : 'Sign In'}
+              </span>
             </button>
           </div>
         </form>

@@ -1,0 +1,363 @@
+name: Code Quality Analysis
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    # Run weekly code quality analysis
+    - cron: '0 6 * * 1'
+
+env:
+  NODE_VERSION: '18'
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  code-quality-analysis:
+    name: Code Quality Analysis
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          npm ci
+          cd backend && pip install -r requirements.txt
+
+      - name: Run ESLint analysis
+        run: |
+          npx eslint src/ --ext .js,.jsx --format=json --output-file=eslint-report.json || true
+          npx eslint src/ --ext .js,.jsx
+
+      - name: Run frontend tests with coverage
+        run: |
+          npm run test:coverage
+
+      - name: Python code quality analysis
+        run: |
+          cd backend
+          
+          # Install analysis tools
+          pip install pylint flake8 black isort mypy bandit
+          
+          # Run pylint
+          pylint app/ --output-format=json > ../pylint-report.json || true
+          
+          # Run flake8
+          flake8 app/ --format=json --output-file=../flake8-report.json || true
+          
+          # Check code formatting
+          black --check --diff app/ || echo "Code formatting issues found"
+          
+          # Check import sorting
+          isort --check-only app/ || echo "Import sorting issues found"
+          
+          # Type checking
+          mypy app/ --ignore-missing-imports || true
+
+      - name: SonarCloud Scan
+        uses: SonarSource/sonarcloud-github-action@master
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          file: ./coverage/lcov.info
+          flags: unittests
+          name: codecov-umbrella
+          fail_ci_if_error: false
+
+  tech-debt-analysis:
+    name: Technical Debt Analysis
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install analysis tools
+        run: |
+          npm install -g jscpd
+          npm ci
+
+      - name: Analyze code duplication
+        run: |
+          npx jscpd src/ --reporters json --output ./jscpd-report.json || true
+          
+          # Check duplication threshold
+          DUPLICATION=$(node -p "
+            const report = require('./jscpd-report.json');
+            report.statistics ? report.statistics.duplicated.percentage : 0
+          ")
+          
+          echo "Code duplication: $DUPLICATION%"
+          
+          if (( $(echo "$DUPLICATION > 10" | bc -l) )); then
+            echo "⚠️ High code duplication detected ($DUPLICATION%)"
+          fi
+
+      - name: Analyze complexity
+        run: |
+          npx complexity-report src/ --format json --output complexity-report.json || true
+          
+          # Check for high complexity functions
+          node -p "
+            const report = require('./complexity-report.json');
+            const highComplexity = report.reports
+              .flatMap(r => r.functions)
+              .filter(f => f.complexity.cyclomatic > 10);
+            
+            if (highComplexity.length > 0) {
+              console.log('⚠️ High complexity functions found:');
+              highComplexity.forEach(f => 
+                console.log('- ' + f.name + ': ' + f.complexity.cyclomatic)
+              );
+            }
+          " || true
+
+      - name: Analyze bundle size
+        run: |
+          npm run build
+          npx bundlesize || true
+
+      - name: Generate tech debt report
+        run: |
+          echo "## 📊 Technical Debt Analysis" >> tech-debt-report.md
+          echo "**Generated:** $(date)" >> tech-debt-report.md
+          echo "" >> tech-debt-report.md
+          
+          # TODO comments analysis
+          TODO_COUNT=$(grep -r "TODO\|FIXME\|HACK" src/ --exclude-dir=node_modules | wc -l)
+          echo "**TODO/FIXME Comments:** $TODO_COUNT" >> tech-debt-report.md
+          
+          # Code duplication
+          if [ -f jscpd-report.json ]; then
+            DUPLICATION=$(node -p "
+              const report = require('./jscpd-report.json');
+              report.statistics ? report.statistics.duplicated.percentage + '%' : 'N/A'
+            ")
+            echo "**Code Duplication:** $DUPLICATION" >> tech-debt-report.md
+          fi
+          
+          # File size analysis
+          LARGE_FILES=$(find src/ -name "*.js" -o -name "*.jsx" -o -name "*.ts" -o -name "*.tsx" | xargs wc -l | awk '$1 > 500 {print $2 " (" $1 " lines)"}' | wc -l)
+          echo "**Large Files (>500 lines):** $LARGE_FILES" >> tech-debt-report.md
+          
+          cat tech-debt-report.md
+
+      - name: Upload analysis reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: tech-debt-analysis
+          path: |
+            jscpd-report.json
+            complexity-report.json
+            tech-debt-report.md
+
+  performance-analysis:
+    name: Performance Analysis
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build application
+        run: npm run build
+
+      - name: Analyze bundle performance
+        run: |
+          # Bundle analysis
+          npx webpack-bundle-analyzer dist/assets/*.js --mode static --report bundle-report.html --no-open || true
+          
+          # Check bundle size
+          BUNDLE_SIZE=$(du -sh dist | cut -f1)
+          echo "Bundle size: $BUNDLE_SIZE"
+          
+          # Individual chunk analysis
+          find dist/assets -name "*.js" -exec bash -c 'echo "$(basename "$1"): $(du -sh "$1" | cut -f1)"' _ {} \;
+
+      - name: Lighthouse CI performance test
+        uses: treosh/lighthouse-ci-action@v10
+        with:
+          configPath: './lighthouserc.json'
+          uploadArtifacts: true
+          temporaryPublicStorage: true
+
+  accessibility-analysis:
+    name: Accessibility Analysis
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build and serve application
+        run: |
+          npm run build
+          npm run preview &
+          npx wait-on http://localhost:5173
+
+      - name: Run accessibility tests
+        run: |
+          # Install axe-cli
+          npm install -g @axe-core/cli
+          
+          # Run axe accessibility tests
+          axe http://localhost:5173 --reporter json --save axe-results.json || true
+          
+          # Check for violations
+          VIOLATIONS=$(node -p "JSON.parse(require('fs').readFileSync('axe-results.json')).violations.length")
+          echo "Accessibility violations: $VIOLATIONS"
+          
+          if [ "$VIOLATIONS" -gt 0 ]; then
+            echo "⚠️ Accessibility violations found!"
+            node -p "
+              const results = JSON.parse(require('fs').readFileSync('axe-results.json'));
+              results.violations.forEach(v => {
+                console.log('- ' + v.id + ': ' + v.description);
+                console.log('  Impact: ' + v.impact);
+                console.log('  Nodes: ' + v.nodes.length);
+              });
+            "
+          fi
+
+      - name: Upload accessibility results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: accessibility-results
+          path: axe-results.json
+
+  quality-gates:
+    name: Quality Gates
+    runs-on: ubuntu-latest
+    needs: [code-quality-analysis, tech-debt-analysis, performance-analysis, accessibility-analysis]
+    if: always()
+    
+    steps:
+      - name: Download all analysis reports
+        uses: actions/download-artifact@v4
+
+      - name: Evaluate quality gates
+        id: quality_check
+        run: |
+          echo "Evaluating quality gates..."
+          
+          QUALITY_PASSED=true
+          ISSUES=""
+          
+          # Check if SonarCloud analysis passed
+          # This would typically check SonarCloud quality gate status
+          
+          # Check test coverage (minimum 80%)
+          if [ -f coverage/coverage-summary.json ]; then
+            COVERAGE=$(node -p "JSON.parse(require('fs').readFileSync('coverage/coverage-summary.json')).total.lines.pct")
+            if (( $(echo "$COVERAGE < 80" | bc -l) )); then
+              QUALITY_PASSED=false
+              ISSUES="$ISSUES\n- Test coverage below 80%: $COVERAGE%"
+            fi
+          fi
+          
+          # Check code duplication
+          if [ -f tech-debt-analysis/jscpd-report.json ]; then
+            DUPLICATION=$(node -p "
+              const report = JSON.parse(require('fs').readFileSync('tech-debt-analysis/jscpd-report.json'));
+              report.statistics ? report.statistics.duplicated.percentage : 0
+            ")
+            if (( $(echo "$DUPLICATION > 15" | bc -l) )); then
+              QUALITY_PASSED=false
+              ISSUES="$ISSUES\n- Code duplication above 15%: $DUPLICATION%"
+            fi
+          fi
+          
+          # Check accessibility violations
+          if [ -f accessibility-results/axe-results.json ]; then
+            VIOLATIONS=$(node -p "JSON.parse(require('fs').readFileSync('accessibility-results/axe-results.json')).violations.length")
+            if [ "$VIOLATIONS" -gt 5 ]; then
+              QUALITY_PASSED=false
+              ISSUES="$ISSUES\n- Too many accessibility violations: $VIOLATIONS"
+            fi
+          fi
+          
+          echo "quality_passed=$QUALITY_PASSED" >> $GITHUB_OUTPUT
+          echo "issues<<EOF" >> $GITHUB_OUTPUT
+          echo -e "$ISSUES" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Create quality report
+        run: |
+          echo "## 🎯 Code Quality Report" >> $GITHUB_STEP_SUMMARY
+          echo "**Analysis Date:** $(date)" >> $GITHUB_STEP_SUMMARY
+          echo "**Branch:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Results" >> $GITHUB_STEP_SUMMARY
+          echo "| Analysis | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Code Quality | ${{ needs.code-quality-analysis.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Technical Debt | ${{ needs.tech-debt-analysis.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Performance | ${{ needs.performance-analysis.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Accessibility | ${{ needs.accessibility-analysis.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [[ "${{ steps.quality_check.outputs.quality_passed }}" == "true" ]]; then
+            echo "### ✅ Quality Gates Passed" >> $GITHUB_STEP_SUMMARY
+            echo "All quality gates have passed successfully!" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "### ❌ Quality Gates Failed" >> $GITHUB_STEP_SUMMARY
+            echo "The following issues were found:" >> $GITHUB_STEP_SUMMARY
+            echo "${{ steps.quality_check.outputs.issues }}" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Fail if quality gates not met
+        if: steps.quality_check.outputs.quality_passed != 'true'
+        run: |
+          echo "Quality gates failed!"
+          echo "${{ steps.quality_check.outputs.issues }}"
+          exit 1

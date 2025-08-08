@@ -24,7 +24,11 @@ const ToastContainer = () => {
   }, [addToast]);
 
   return (
-    <div className="fixed top-4 left-4 right-4 lg:left-auto lg:right-4 z-50 space-y-2 max-w-sm lg:max-w-md mx-auto lg:mx-0">
+    <div 
+      className="fixed top-4 left-4 right-4 lg:left-auto lg:right-4 z-50 space-y-2 max-w-sm lg:max-w-md mx-auto lg:mx-0"
+      aria-label="Notifications"
+      role="region"
+    >
       {toasts.map((toast) => (
         <Toast
           key={toast.id}

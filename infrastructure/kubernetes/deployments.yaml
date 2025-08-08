@@ -1,0 +1,374 @@
+# Backend deployment with optimizations
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: livyflow-backend
+  namespace: livyflow-prod
+  labels:
+    app.kubernetes.io/name: livyflow-backend
+    app.kubernetes.io/instance: prod
+    app.kubernetes.io/component: backend
+    app.kubernetes.io/part-of: livyflow
+    app.kubernetes.io/version: "1.0"
+spec:
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: livyflow-backend
+      app.kubernetes.io/instance: prod
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: livyflow-backend
+        app.kubernetes.io/instance: prod
+        app.kubernetes.io/component: backend
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: livyflow-backend
+      imagePullSecrets:
+        - name: livyflow-registry
+      containers:
+      - name: backend
+        image: livyflow/backend:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8000
+          name: http
+          protocol: TCP
+        - containerPort: 9090
+          name: metrics
+          protocol: TCP
+        env:
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        envFrom:
+        - configMapRef:
+            name: livyflow-config
+        - secretRef:
+            name: livyflow-secrets
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "200m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /api/health
+            port: 8000
+            scheme: HTTP
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          successThreshold: 1
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /api/health
+            port: 8000
+            scheme: HTTP
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          successThreshold: 1
+          failureThreshold: 3
+        startupProbe:
+          httpGet:
+            path: /api/health
+            port: 8000
+            scheme: HTTP
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          successThreshold: 1
+          failureThreshold: 10
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 1000
+          runAsGroup: 1000
+          readOnlyRootFilesystem: true
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+              - ALL
+        volumeMounts:
+        - name: tmp-volume
+          mountPath: /tmp
+        - name: prometheus-multiproc-dir
+          mountPath: /tmp/prometheus_multiproc_dir
+      volumes:
+      - name: tmp-volume
+        emptyDir: {}
+      - name: prometheus-multiproc-dir
+        emptyDir: {}
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app.kubernetes.io/name
+                  operator: In
+                  values:
+                  - livyflow-backend
+              topologyKey: kubernetes.io/hostname
+      topologySpreadConstraints:
+      - maxSkew: 1
+        topologyKey: topology.kubernetes.io/zone
+        whenUnsatisfiable: DoNotSchedule
+        labelSelector:
+          matchLabels:
+            app.kubernetes.io/name: livyflow-backend
+            app.kubernetes.io/instance: prod
+
+---
+# Frontend deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: livyflow-frontend
+  namespace: livyflow-prod
+  labels:
+    app.kubernetes.io/name: livyflow-frontend
+    app.kubernetes.io/instance: prod
+    app.kubernetes.io/component: frontend
+    app.kubernetes.io/part-of: livyflow
+    app.kubernetes.io/version: "1.0"
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: livyflow-frontend
+      app.kubernetes.io/instance: prod
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: livyflow-frontend
+        app.kubernetes.io/instance: prod
+        app.kubernetes.io/component: frontend
+    spec:
+      serviceAccountName: livyflow-frontend
+      imagePullSecrets:
+        - name: livyflow-registry
+      containers:
+      - name: frontend
+        image: livyflow/frontend:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8080
+          name: http
+          protocol: TCP
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+            scheme: HTTP
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 3
+          successThreshold: 1
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+            scheme: HTTP
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 2
+          successThreshold: 1
+          failureThreshold: 3
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 1001
+          runAsGroup: 1001
+          readOnlyRootFilesystem: true
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+              - ALL
+        volumeMounts:
+        - name: nginx-cache
+          mountPath: /var/cache/nginx
+        - name: nginx-run
+          mountPath: /var/run
+        - name: nginx-config
+          mountPath: /etc/nginx/nginx.conf
+          subPath: nginx.conf
+        - name: nginx-config
+          mountPath: /etc/nginx/conf.d/default.conf
+          subPath: default.conf
+      volumes:
+      - name: nginx-cache
+        emptyDir: {}
+      - name: nginx-run
+        emptyDir: {}
+      - name: nginx-config
+        configMap:
+          name: nginx-config
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app.kubernetes.io/name
+                  operator: In
+                  values:
+                  - livyflow-frontend
+              topologyKey: kubernetes.io/hostname
+
+---
+# HorizontalPodAutoscaler for backend
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: livyflow-backend-hpa
+  namespace: livyflow-prod
+  labels:
+    app.kubernetes.io/name: livyflow-backend
+    app.kubernetes.io/instance: prod
+    app.kubernetes.io/component: hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: livyflow-backend
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 10
+        periodSeconds: 60
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+      - type: Percent
+        value: 50
+        periodSeconds: 60
+      - type: Pods
+        value: 2
+        periodSeconds: 60
+      selectPolicy: Max
+
+---
+# HorizontalPodAutoscaler for frontend
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: livyflow-frontend-hpa
+  namespace: livyflow-prod
+  labels:
+    app.kubernetes.io/name: livyflow-frontend
+    app.kubernetes.io/instance: prod
+    app.kubernetes.io/component: hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: livyflow-frontend
+  minReplicas: 2
+  maxReplicas: 6
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 25
+        periodSeconds: 60
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+      - type: Percent
+        value: 100
+        periodSeconds: 60
+
+---
+# PodDisruptionBudget for backend
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: livyflow-backend-pdb
+  namespace: livyflow-prod
+  labels:
+    app.kubernetes.io/name: livyflow-backend
+    app.kubernetes.io/instance: prod
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: livyflow-backend
+      app.kubernetes.io/instance: prod
+
+---
+# PodDisruptionBudget for frontend
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: livyflow-frontend-pdb
+  namespace: livyflow-prod
+  labels:
+    app.kubernetes.io/name: livyflow-frontend
+    app.kubernetes.io/instance: prod
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: livyflow-frontend
+      app.kubernetes.io/instance: prod

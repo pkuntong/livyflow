@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Receipt, RefreshCw } from 'lucide-react';
 import FinancialOverview from '../../Components/dashboard/FinancialOverview.js';
 import MonthlySpendingChart from '../../Components/dashboard/MonthlySpendingChart.js';
@@ -12,6 +12,7 @@ import RecurringSubscriptions from '../components/RecurringSubscriptions.jsx';
 import { useAuth } from '../contexts/AuthContext';
 import plaidService from '../services/plaidService';
 import { createNotification } from '../services/notificationService';
+import { PullToRefresh } from '../utils/touchGestures';
 
 export default function Dashboard({ accounts = [], transactions = [] }) {
   const { user } = useAuth();
@@ -20,6 +21,7 @@ export default function Dashboard({ accounts = [], transactions = [] }) {
   const [plaidTransactionsError, setPlaidTransactionsError] = useState(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [hasShownWelcome, setHasShownWelcome] = useState(false);
+  const dashboardRef = useRef(null);
 
   // Fetch Plaid transactions when user is authenticated
   useEffect(() => {
@@ -106,54 +108,70 @@ export default function Dashboard({ accounts = [], transactions = [] }) {
     }
   };
 
+  // Setup pull-to-refresh
+  useEffect(() => {
+    if (dashboardRef.current && user) {
+      const pullToRefresh = new PullToRefresh(dashboardRef.current, {
+        refreshCallback: handleRefresh,
+        threshold: 60
+      });
+      
+      return () => {
+        if (pullToRefresh.destroy) {
+          pullToRefresh.destroy();
+        }
+      };
+    }
+  }, [user]);
+
   return (
-    <div className="w-full">
-      <div className="mb-6 lg:mb-8">
-        <h1 className="text-2xl lg:text-3xl font-bold text-gray-900">Financial Dashboard</h1>
-        <p className="text-gray-600 mt-1">Welcome back! Here's your financial overview.</p>
+    <div ref={dashboardRef} className="w-full prevent-overscroll">
+      <div className="mb-4 sm:mb-6 lg:mb-8">
+        <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-900">Financial Dashboard</h1>
+        <p className="text-gray-600 mt-1 text-sm sm:text-base">Welcome back! Here's your financial overview.</p>
       </div>
 
       {/* Financial Alerts */}
-      <div className="mb-6 lg:mb-8">
+      <div className="mb-4 sm:mb-6 lg:mb-8">
         <Alerts />
       </div>
 
       {/* Financial Overview Cards */}
-      <div className="mb-6 lg:mb-8">
+      <div className="mb-4 sm:mb-6 lg:mb-8">
         <FinancialOverview accounts={accounts} transactions={allTransactions} />
       </div>
 
       {/* AI Insights */}
-      <div className="mb-6 lg:mb-8">
+      <div className="mb-4 sm:mb-6 lg:mb-8">
         <Insights />
       </div>
 
       {/* Monthly Insights Panel */}
-      <div className="mb-6 lg:mb-8">
+      <div className="mb-4 sm:mb-6 lg:mb-8">
         <MonthlyInsightsPanel />
       </div>
 
       {/* Additional Dashboard Components - Stack vertically on mobile, horizontal on md+ */}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 lg:gap-6 mb-6 lg:mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-6 mb-4 sm:mb-6 lg:mb-8">
         {/* Recent Transactions */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 w-full">
-          <div className="p-4 lg:p-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-gray-100">
-            <h2 className="text-lg lg:text-xl font-semibold text-gray-900">Recent Transactions</h2>
+        <div className="bg-white rounded-xl sm:rounded-2xl shadow-sm border border-gray-100 w-full">
+          <div className="p-4 sm:p-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4 border-b border-gray-100">
+            <h2 className="text-base sm:text-lg lg:text-xl font-semibold text-gray-900">Recent Transactions</h2>
             <div className="flex items-center gap-2 flex-wrap">
               <button
                 onClick={handleRefresh}
                 disabled={isRefreshing || plaidTransactionsLoading}
-                className="inline-flex items-center gap-1 px-2 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="inline-flex items-center gap-1 px-3 py-2 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed touch-target tap-highlight haptic-feedback"
               >
                 <RefreshCw className={`w-3 h-3 ${isRefreshing ? 'animate-spin' : ''}`} />
-                {isRefreshing ? 'Refreshing...' : 'Refresh'}
+                <span className="hidden sm:inline">{isRefreshing ? 'Refreshing...' : 'Refresh'}</span>
               </button>
-              <button className="inline-flex items-center justify-center rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+              <button className="inline-flex items-center justify-center rounded-md bg-blue-600 px-3 py-2 text-xs font-medium text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 touch-target tap-highlight haptic-feedback">
                 + Add
               </button>
             </div>
           </div>
-          <div className="p-4 lg:p-6">
+          <div className="p-4 sm:p-6">
             {plaidTransactionsLoading && (
               <div className="flex items-center justify-center py-8">
                 <div className="flex items-center gap-2 text-blue-600">
@@ -181,11 +199,11 @@ export default function Dashboard({ accounts = [], transactions = [] }) {
               </div>
             )}
             
-            <div className="space-y-6">
+            <div className="space-y-4 sm:space-y-6">
               {allTransactions.length > 0 ? (
                 allTransactions.map((transaction, index) => (
-                  <div key={transaction.id || transaction.transaction_id || index} className="flex items-center justify-between">
-                    <div className="flex items-center gap-4 min-w-0 flex-1">
+                  <div key={transaction.id || transaction.transaction_id || index} className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3 sm:gap-4 min-w-0 flex-1">
                       <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
                         <Receipt className="w-5 h-5 text-red-600" />
                       </div>
@@ -193,7 +211,7 @@ export default function Dashboard({ accounts = [], transactions = [] }) {
                         <p className="font-medium text-gray-900 truncate">
                           {transaction.name || transaction.description || transaction.merchant_name || 'Unknown Transaction'}
                         </p>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1 sm:gap-2 flex-wrap">
                           {transaction.category && (
                             <span className="text-xs px-2 py-1 rounded-full bg-blue-100 text-blue-800">
                               {Array.isArray(transaction.category) 
@@ -201,17 +219,17 @@ export default function Dashboard({ accounts = [], transactions = [] }) {
                                 : transaction.category.replace(/_/g, ' ')}
                             </span>
                           )}
-                          <span className="text-sm text-gray-500 truncate">
+                          <span className="text-xs sm:text-sm text-gray-500 truncate">
                             {transaction.isPlaidConnected ? 'Connected Account' : 'Unknown Account'}
                           </span>
                         </div>
                       </div>
                     </div>
-                    <div className="text-right flex-shrink-0 ml-2">
+                    <div className="text-right flex-shrink-0 ml-2 sm:ml-4">
                       <p className={`font-semibold ${transaction.amount < 0 ? 'text-red-600' : 'text-green-600'}`}>
                         {transaction.amount < 0 ? '-' : '+'}${Math.abs(transaction.amount).toFixed(2)}
                       </p>
-                      <p className="text-sm text-gray-500">
+                      <p className="text-xs sm:text-sm text-gray-500">
                         {transaction.date ? new Date(transaction.date).toLocaleDateString('en-US', { 
                           month: 'short', 
                           day: 'numeric' 
@@ -242,39 +260,39 @@ export default function Dashboard({ accounts = [], transactions = [] }) {
       </div>
 
       {/* Second Row - Full Width Components - Stack vertically on mobile */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-6 mb-6 lg:mb-8">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 mb-4 sm:mb-6 lg:mb-8">
         {/* Spending Trend Over Time Chart */}
         <div className="w-full">
           <SpendingTrendChart />
         </div>
         
         {/* Placeholder for future component */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 lg:p-6 w-full">
-          <h2 className="text-lg lg:text-xl font-semibold text-gray-900 mb-4">Quick Actions</h2>
+        <div className="bg-white rounded-xl sm:rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-6 w-full">
+          <h2 className="text-base sm:text-lg lg:text-xl font-semibold text-gray-900 mb-4">Quick Actions</h2>
           <div className="space-y-3">
-            <button className="w-full text-left p-3 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors">
-              <div className="font-medium text-gray-900">📊 View Analytics</div>
-              <div className="text-sm text-gray-600">Detailed spending analysis</div>
+            <button className="w-full text-left p-3 sm:p-4 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors touch-target tap-highlight haptic-feedback">
+              <div className="font-medium text-gray-900 text-sm sm:text-base">📊 View Analytics</div>
+              <div className="text-xs sm:text-sm text-gray-600 mt-1">Detailed spending analysis</div>
             </button>
-            <button className="w-full text-left p-3 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors">
-              <div className="font-medium text-gray-900">🎯 Set Budget Goals</div>
-              <div className="text-sm text-gray-600">Create and track budgets</div>
+            <button className="w-full text-left p-3 sm:p-4 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors touch-target tap-highlight haptic-feedback">
+              <div className="font-medium text-gray-900 text-sm sm:text-base">🎯 Set Budget Goals</div>
+              <div className="text-xs sm:text-sm text-gray-600 mt-1">Create and track budgets</div>
             </button>
-            <button className="w-full text-left p-3 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors">
-              <div className="font-medium text-gray-900">📈 Track Progress</div>
-              <div className="text-sm text-gray-600">Monitor financial goals</div>
+            <button className="w-full text-left p-3 sm:p-4 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors touch-target tap-highlight haptic-feedback">
+              <div className="font-medium text-gray-900 text-sm sm:text-base">📈 Track Progress</div>
+              <div className="text-xs sm:text-sm text-gray-600 mt-1">Monitor financial goals</div>
             </button>
           </div>
         </div>
       </div>
 
       {/* Spending Trends Chart - Full Width */}
-      <div className="mb-6 lg:mb-8">
+      <div className="mb-4 sm:mb-6 lg:mb-8">
         <SpendingTrendsChart />
       </div>
 
       {/* Export Section */}
-      <div className="mb-6 lg:mb-8">
+      <div className="mb-4 sm:mb-6 lg:mb-8">
         <Export />
       </div>
     </div>
