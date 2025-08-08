@@ -4,17 +4,13 @@ import Layout from './components/Layout'
 import Landing from './Landing'
 import SignUp from './Pages/SignUp'
 import Login from './Pages/Login'
-import { 
-  LazyDashboard, 
-  LazyTransactions, 
-  LazyBudgets, 
-  LazyReports, 
-  LazyAccounts, 
-  LazyAnalytics, 
-  LazySettings,
-  SuspenseWrapper,
-  CardSkeleton
-} from './utils/lazyLoading'
+import Dashboard from './Pages/Dashboard'
+import Transactions from './Pages/Transactions'
+import Budgets from './Pages/Budgets'
+import Reports from './Pages/Reports'
+import Accounts from './Pages/Accounts'
+import Analytics from './Pages/Analytics'
+import Settings from './Pages/Settings'
 
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 
@@ -36,14 +32,6 @@ function ProtectedRoute({ children }) {
 }
 
 function AppRoutes() {
-  const loadingFallback = (
-    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-6 p-4">
-      <CardSkeleton />
-      <CardSkeleton />
-      <CardSkeleton />
-    </div>
-  );
-
   return (
     <Routes>
       {/* Public Routes */}
@@ -57,46 +45,14 @@ function AppRoutes() {
           <Layout />
         </ProtectedRoute>
       }>
-        <Route index element={
-          <SuspenseWrapper fallback={loadingFallback}>
-            <LazyDashboard />
-          </SuspenseWrapper>
-        } />
-        <Route path="dashboard" element={
-          <SuspenseWrapper fallback={loadingFallback}>
-            <LazyDashboard />
-          </SuspenseWrapper>
-        } />
-        <Route path="transactions" element={
-          <SuspenseWrapper fallback={loadingFallback}>
-            <LazyTransactions />
-          </SuspenseWrapper>
-        } />
-        <Route path="budgets" element={
-          <SuspenseWrapper fallback={loadingFallback}>
-            <LazyBudgets />
-          </SuspenseWrapper>
-        } />
-        <Route path="reports" element={
-          <SuspenseWrapper fallback={loadingFallback}>
-            <LazyReports />
-          </SuspenseWrapper>
-        } />
-        <Route path="accounts" element={
-          <SuspenseWrapper fallback={loadingFallback}>
-            <LazyAccounts />
-          </SuspenseWrapper>
-        } />
-        <Route path="analytics" element={
-          <SuspenseWrapper fallback={loadingFallback}>
-            <LazyAnalytics />
-          </SuspenseWrapper>
-        } />
-        <Route path="settings" element={
-          <SuspenseWrapper fallback={loadingFallback}>
-            <LazySettings />
-          </SuspenseWrapper>
-        } />
+        <Route index element={<Dashboard />} />
+        <Route path="dashboard" element={<Dashboard />} />
+        <Route path="transactions" element={<Transactions />} />
+        <Route path="budgets" element={<Budgets />} />
+        <Route path="reports" element={<Reports />} />
+        <Route path="accounts" element={<Accounts />} />
+        <Route path="analytics" element={<Analytics />} />
+        <Route path="settings" element={<Settings />} />
       </Route>
     </Routes>
   )
