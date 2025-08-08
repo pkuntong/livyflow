@@ -3,6 +3,10 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=8.0.0"
+  },
   "scripts": {
     "dev": "vite --open",
     "dev-full": "concurrently \"npm run dev\" \"npm run dev-backend\"",
@@ -49,8 +53,6 @@
   },
   "devDependencies": {
     "@cypress/vite-dev-server": "^6.0.3",
-    "@stagewise-plugins/react": "^0.5.2",
-    "@stagewise/toolbar-react": "^0.5.2",
     "@testing-library/jest-dom": "^6.6.4",
     "@testing-library/react": "^16.3.0",
     "@testing-library/user-event": "^14.6.1",

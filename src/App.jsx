@@ -20,38 +20,7 @@ import { AuthProvider, useAuth } from './contexts/AuthContext'
 
 // Development tools component - completely disabled for production builds
 function DevTools() {
-  // Early return for production to avoid any imports
-  if (import.meta.env.PROD) {
-    return null;
-  }
-
-  // Only include development tools in development builds
-  if (import.meta.env.DEV) {
-    // Dynamic import to avoid bundle issues
-    const [StagewiseToolbar, setStagewiseToolbar] = React.useState(null);
-    const [ReactPlugin, setReactPlugin] = React.useState(null);
-    
-    React.useEffect(() => {
-      const loadDevTools = async () => {
-        try {
-          const stagewise = await import('@stagewise/toolbar-react');
-          const plugin = await import('@stagewise-plugins/react');
-          setStagewiseToolbar(() => stagewise.StagewiseToolbar);
-          setReactPlugin(() => plugin.default);
-        } catch (error) {
-          console.log('Dev tools not available:', error.message);
-        }
-      };
-      loadDevTools();
-    }, []);
-    
-    if (StagewiseToolbar && ReactPlugin) {
-      return React.createElement(StagewiseToolbar, { 
-        config: { plugins: [ReactPlugin] } 
-      });
-    }
-  }
-  
+  // Always return null to avoid any import issues in Vercel
   return null;
 }
 
