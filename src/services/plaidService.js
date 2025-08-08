@@ -6,12 +6,11 @@ class PlaidService {
     // In development, use the Vite proxy to avoid CORS issues
     const isDev = import.meta.env.DEV;
     
-    // Use production URL directly if not in development
+    // Use same-origin API on Vercel
     if (isDev) {
       this.baseURL = ''; // Use Vite proxy
     } else {
-      // Production - use the actual backend URL
-      this.baseURL = 'https://livyflow.onrender.com';
+      this.baseURL = ''; // Same origin (Vercel serverless functions under /api)
     }
     
     // Security: Only log in development
@@ -40,12 +39,9 @@ class PlaidService {
   // Check if backend is available
   async checkBackendHealth() {
     try {
-      const response = await axios.get(`${this.baseURL}/api/health`, {
-        timeout: 5000 // 5 second timeout
-      });
-      return response.status === 200;
+      // For serverless, treat same-origin as available
+      return true;
     } catch (error) {
-      console.error("❌ Backend health check failed:", error.message);
       return false;
     }
   }
@@ -53,13 +49,7 @@ class PlaidService {
   // Fetch link token from backend (with fallback to test endpoint)
   async getLinkToken(useTestEndpoint = false) {
     try {
-      // Check if backend is available
-      const backendAvailable = await this.checkBackendHealth();
-      if (!backendAvailable) {
-        throw new Error('Backend server is not available. Please ensure the backend is running on localhost:8000');
-      }
-
-      const endpoint = '/api/v1/plaid/link-token';
+      const endpoint = '/api/plaid/link-token';
       if (import.meta.env.DEV) {
         console.log("Making request to:", `${this.baseURL}${endpoint}`);
       }
@@ -81,28 +71,9 @@ class PlaidService {
       }
 
       const response = await axios.get(`${this.baseURL}${endpoint}`, config);
-
-      if (import.meta.env.DEV) {
-        console.log("Response status:", response.status);
-        console.log("Link token received");
-      }
-
       return response.data.link_token;
     } catch (error) {
       console.error('Error fetching link token:', error);
-      
-      // Handle specific error cases
-      if (error.code === 'ECONNREFUSED' || error.message.includes('Backend server is not available')) {
-        throw new Error('Backend server is not running. Please start the backend server.');
-      }
-      
-      if (error.response?.status === 500) {
-        throw new Error('Backend configuration error. Please check the server logs.');
-      }
-      
-      if (error.response?.status === 401) {
-        throw new Error('Authentication failed. Please sign in again.');
-      }
       throw error;
     }
   }
@@ -111,7 +82,7 @@ class PlaidService {
   async exchangePublicToken(publicToken) {
     try {
       if (import.meta.env.DEV) {
-        console.log("Making request to:", `${this.baseURL}/api/v1/plaid/exchange-token`);
+        console.log("Making request to:", `${this.baseURL}/api/plaid/exchange-token`);
       }
       
       const token = await this.getAuthToken();
@@ -119,11 +90,9 @@ class PlaidService {
         throw new Error('No authentication token found - user must be signed in');
       }
 
-      const requestBody = {
-        public_token: publicToken,
-      };
+      const requestBody = { public_token: publicToken };
 
-      const response = await axios.post(`${this.baseURL}/api/v1/plaid/exchange-token`, requestBody, {
+      const response = await axios.post(`${this.baseURL}/api/plaid/exchange-token`, requestBody, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
@@ -131,23 +100,9 @@ class PlaidService {
         timeout: 10000 // 10 second timeout
       });
 
-      if (import.meta.env.DEV) {
-        console.log("Response status:", response.status);
-      }
-
       return response.data;
     } catch (error) {
       console.error('Error exchanging public token:', error);
-      
-      // Handle specific error cases
-      if (error.code === 'ECONNREFUSED') {
-        throw new Error('Backend server is not running. Please start the backend server.');
-      }
-      
-      if (error.response?.status === 500) {
-        throw new Error('Backend configuration error. Please check the server logs.');
-      }
-      
       throw error;
     }
   }
@@ -155,97 +110,51 @@ class PlaidService {
   // Get accounts from Plaid
   async getAccounts() {
     try {
-      if (import.meta.env.DEV) {
-        console.log("Making request to:", `${this.baseURL}/api/v1/plaid/accounts`);
-      }
-      
       const token = await this.getAuthToken();
       if (!token) {
         throw new Error('No authentication token found - user must be signed in');
       }
 
-      const response = await axios.get(`${this.baseURL}/api/v1/plaid/accounts`, {
+      const response = await axios.get(`${this.baseURL}/api/plaid/accounts`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
-        timeout: 10000 // 10 second timeout
+        timeout: 10000
       });
-
-      if (import.meta.env.DEV) {
-        console.log("Response status:", response.status);
-        console.log("Account count:", response.data.accounts?.length || 0);
-      }
 
       return response.data;
     } catch (error) {
       console.error('Error fetching accounts:', error);
-      
-      // Handle specific error cases
-      if (error.code === 'ECONNREFUSED') {
-        throw new Error('Backend server is not running. Please start the backend server.');
-      }
-      
-      if (error.response?.status === 400) {
-        throw new Error('No bank account connected. Please connect your bank account first.');
-      }
-      
-      console.error('❌ Error response data:', error.response?.data);
-      console.error('❌ Error status:', error.response?.status);
-      console.error('❌ Error message:', error.message);
       throw error;
     }
   }
 
-  // Get transactions from Plaid (updated to use stored access token)
+  // Get transactions from Plaid
   async getTransactions(startDate = null, endDate = null, count = 100) {
     try {
-      console.log("🌐 Making request to:", `${this.baseURL}/api/v1/plaid/transactions`);
-      console.log("📅 Date range:", { startDate, endDate, count });
-      
       const token = await this.getAuthToken();
       if (!token) {
         throw new Error('No authentication token found - user must be signed in');
       }
 
-      const params = new URLSearchParams({
-        count: count.toString()
-      });
-      
+      const params = new URLSearchParams({ count: String(count) });
       if (startDate) params.append('start_date', startDate);
       if (endDate) params.append('end_date', endDate);
 
-      const url = `${this.baseURL}/api/v1/plaid/transactions?${params.toString()}`;
-      console.log("🔗 Full URL:", url);
+      const url = `${this.baseURL}/api/plaid/transactions?${params.toString()}`;
 
       const response = await axios.get(url, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
-        timeout: 15000 // 15 second timeout for transactions
+        timeout: 15000
       });
-
-      console.log("📡 Response status:", response.status);
-      console.log("📦 Full response data:", response.data);
-      console.log("💰 Transaction count:", response.data.transactions?.length || 0);
 
       return response.data;
     } catch (error) {
       console.error('❌ Error fetching transactions:', error);
-      
-      // Handle specific error cases
-      if (error.code === 'ECONNREFUSED') {
-        throw new Error('Backend server is not running. Please start the backend server on localhost:8000');
-      }
-      
-      if (error.response?.status === 400) {
-        throw new Error('No bank account connected. Please connect your bank account first.');
-      }
-      
-      console.error('❌ Error response data:', error.response?.data);
-      console.error('❌ Error status:', error.response?.status);
-      console.error('❌ Error message:', error.message);
       throw error;
     }
   }
