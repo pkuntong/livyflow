@@ -1,293 +1,89 @@
-# 🚀 LivyFlow Deployment Guide
+# 🚀 LivyFlow Deployment Guide (Vercel)
 
-This guide will help you deploy LivyFlow to production environments.
+This guide covers deploying LivyFlow using Vercel for both the React app and the Plaid API via serverless functions.
 
-## 📋 Pre-Deployment Checklist
+## ✅ Pre-Deployment Checklist
+- Vercel project created and connected to GitHub
+- Firebase Web App config ready (VITE_FIREBASE_*)
+- Plaid credentials ready (CLIENT_ID, SECRET, ENV)
+- OAuth Redirect URI added in Plaid Dashboard (e.g., https://yourdomain.com/plaid-oauth-return)
 
-- [ ] Remove all test credentials from `.env` files
-- [ ] Ensure `.env` is in `.gitignore`
-- [ ] Set up production Firebase project
-- [ ] Configure production Plaid environment
-- [ ] Set up SMTP for email notifications
-- [ ] Choose hosting platforms
+## 🔐 Environment Variables (Vercel → Project → Settings → Environment Variables)
+- VITE_FIREBASE_API_KEY
+- VITE_FIREBASE_AUTH_DOMAIN
+- VITE_FIREBASE_PROJECT_ID
+- VITE_FIREBASE_STORAGE_BUCKET
+- VITE_FIREBASE_MESSAGING_SENDER_ID
+- VITE_FIREBASE_APP_ID
+- VITE_FIREBASE_MEASUREMENT_ID (optional)
+- PLAID_CLIENT_ID
+- PLAID_SECRET
+- PLAID_ENV (production | development | sandbox)
+- PLAID_REDIRECT_URI (e.g., https://yourdomain.com/plaid-oauth-return)
 
-## 🏗️ Frontend Deployment
+## 🏗️ Build & Deploy
+Vercel will use the repo settings:
+- Build command: vite build (via vercel.json)
+- Output directory: dist
+- SPA rewrites exclude /api so serverless functions work
 
-### Option 1: Vercel (Recommended)
-
-1. **Install Vercel CLI:**
+Deploy steps:
 ```bash
 npm i -g vercel
+vercel  # first-time link
+vercel --prod
 ```
 
-2. **Deploy:**
+## 🔌 API (Serverless on Vercel)
+The following routes are implemented in `api/`:
+- `GET /api/plaid/link-token` — Create Plaid Link token (uses optional PLAID_REDIRECT_URI)
+- `POST /api/plaid/exchange-token` — Exchange public token and store access token in memory
+- `GET /api/plaid/accounts` — Fetch connected accounts
+- `GET /api/plaid/transactions` — Fetch recent transactions (optional start_date, end_date, count)
+
+Frontend services call same-origin `/api/...` so no CORS setup is needed.
+
+## 🔄 Local Development
 ```bash
-vercel
+npm install
+npm run dev
 ```
-
-3. **Configure environment variables in Vercel dashboard:**
-   - `VITE_API_URL` - Your backend URL
-
-### Option 2: Netlify
-
-1. **Connect your GitHub repository**
-2. **Build settings:**
-   - Build command: `npm run build`
-   - Publish directory: `dist`
-3. **Add environment variables in Netlify dashboard**
-
-### Option 3: Manual Build
-
+Vite will serve the React app. You can call the serverless routes locally using `vercel dev` if desired:
 ```bash
-# Build the project
-./build.sh
-
-# The dist/ folder contains your production build
+vercel dev
 ```
 
-## 🔧 Backend Deployment
-
-### Option 1: Render
-
-1. **Connect your GitHub repository**
-2. **Build settings:**
-   - Build command: `pip install -r requirements.txt`
-   - Start command: `python run.py`
-3. **Environment variables:**
-   - Copy from `backend/env.example`
-   - Set `ENVIRONMENT=production`
-   - Update `ALLOWED_ORIGINS` with your frontend domain
-
-### Option 2: Railway
-
-1. **Connect your GitHub repository**
-2. **Railway will auto-detect Python**
-3. **Add environment variables in Railway dashboard**
-
-### Option 3: Fly.io
-
+## 🧪 Testing
 ```bash
-# Install Fly CLI
-curl -L https://fly.io/install.sh | sh
-
-# Login
-fly auth login
-
-# Create app
-fly launch
-
-# Deploy
-fly deploy
+npm test
 ```
 
-### Option 4: Heroku
-
-1. **Create Procfile:**
+## 📁 Structure
 ```
-web: python run.py
-```
-
-2. **Deploy:**
-```bash
-heroku create your-app-name
-git push heroku main
-```
-
-## 🔐 Environment Variables
-
-### Production Environment Variables
-
-Create a `.env` file in your backend directory:
-
-```env
-# Environment
-ENVIRONMENT=production
-DEBUG=false
-HOST=0.0.0.0
-PORT=8000
-
-# CORS - Add your production domain
-ALLOWED_ORIGINS=https://yourdomain.com
-
-# Firebase (Production)
-FIREBASE_PROJECT_ID=your-production-project-id
-FIREBASE_PRIVATE_KEY_ID=your-private-key-id
-FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
-FIREBASE_CLIENT_EMAIL=your-service-account@your-project.iam.gserviceaccount.com
-FIREBASE_CLIENT_ID=your-client-id
-FIREBASE_AUTH_URI=https://accounts.google.com/o/oauth2/auth
-FIREBASE_TOKEN_URI=https://oauth2.googleapis.com/token
-FIREBASE_AUTH_PROVIDER_X509_CERT_URL=https://www.googleapis.com/oauth2/v1/certs
-FIREBASE_CLIENT_X509_CERT_URL=https://www.googleapis.com/robot/v1/metadata/x509/your-service-account%40your-project.iam.gserviceaccount.com
-
-# Plaid (Production)
-PLAID_CLIENT_ID=your-plaid-client-id
-PLAID_SECRET=your-plaid-secret
-PLAID_ENV=production
-
-# Email
-SMTP_SERVER=smtp.gmail.com
-SMTP_PORT=587
-SMTP_USERNAME=your-email@gmail.com
-SMTP_PASSWORD=your-app-password
-FROM_EMAIL=noreply@yourdomain.com
-
-# Security
-SECRET_KEY=your-super-secret-key-change-this
-ACCESS_TOKEN_EXPIRE_MINUTES=30
+LivyFlow/
+├── api/                    # Vercel functions (Plaid)
+├── public/
+├── src/
+│   ├── components/
+│   ├── services/           # Calls to /api
+│   └── contexts/
+├── vercel.json
+└── package.json
 ```
 
-## 🔒 Security Checklist
+## 🔒 Security
+- Keep PLAID_* and VITE_FIREBASE_* in Vercel env vars
+- Use HTTPS domains
+- Do not log secrets; audit logs in production
 
-### Backend Security
-- [ ] Set `ENVIRONMENT=production`
-- [ ] Set `DEBUG=false`
-- [ ] Use strong `SECRET_KEY`
-- [ ] Configure proper CORS origins
-- [ ] Enable HTTPS
-- [ ] Use secure cookies
-- [ ] Remove debug logs
+## 🧠 Notes
+- Access tokens are stored in memory in serverless functions; for production-grade persistence, wire up a database or Vercel KV.
 
-### Frontend Security
-- [ ] Use HTTPS in production
-- [ ] Set up Content Security Policy
-- [ ] Configure Firebase App Check (optional)
-- [ ] Use environment variables for API URLs
-
-### Authentication Security
-- [ ] Configure Firebase production project
-- [ ] Add production domain to authorized domains
-- [ ] Set up proper redirect URLs
-- [ ] Enable email verification (optional)
-
-## 🌐 Domain Configuration
-
-### Firebase Configuration
-1. Go to Firebase Console > Authentication > Settings
-2. Add your production domain to "Authorized domains"
-3. Configure OAuth redirect URLs
-
-### CORS Configuration
-Update `ALLOWED_ORIGINS` in your backend environment:
-```env
-ALLOWED_ORIGINS=https://yourdomain.com,https://www.yourdomain.com
-```
-
-## 📧 Email Configuration
-
-### Gmail Setup
-1. Enable 2-factor authentication
-2. Generate App Password
-3. Use App Password in SMTP configuration
-
-### Other SMTP Providers
-- **SendGrid:** Use their SMTP settings
-- **Mailgun:** Use their SMTP settings
-- **AWS SES:** Use their SMTP settings
-
-## 🔍 Post-Deployment Testing
-
-### Health Checks
-```bash
-# Test backend health
-curl https://your-backend-domain.com/api/health
-
-# Test frontend
-curl https://your-frontend-domain.com
-```
-
-### Feature Testing
-- [ ] User registration/login
-- [ ] Plaid bank connection
-- [ ] Transaction fetching
-- [ ] Budget creation
-- [ ] Email notifications
-- [ ] Weekly summaries
-
-## 📊 Monitoring
-
-### Recommended Tools
-- **Backend:** Sentry for error tracking
-- **Frontend:** Vercel Analytics or Google Analytics
-- **Performance:** Lighthouse CI
-- **Uptime:** UptimeRobot or Pingdom
-
-### Logging
-- Backend logs are automatically configured for production
-- Log level: WARNING (reduces noise)
-- Consider using structured logging for better analysis
-
-## 🚨 Troubleshooting
-
-### Common Issues
-
-1. **CORS Errors**
-   - Check `ALLOWED_ORIGINS` configuration
-   - Ensure frontend URL is included
-
-2. **Authentication Failures**
-   - Verify Firebase configuration
-   - Check domain authorization
-
-3. **Plaid Connection Issues**
-   - Ensure `PLAID_ENV=production`
-   - Verify webhook URLs (if using)
-
-4. **Email Not Working**
-   - Check SMTP credentials
-   - Verify app passwords for Gmail
-
-### Debug Mode
-For troubleshooting, temporarily enable debug mode:
-```env
-DEBUG=true
-ENVIRONMENT=development
-```
-
-## 📈 Scaling Considerations
-
-### Database
-- Consider migrating from in-memory storage to a proper database
-- Options: PostgreSQL, MongoDB, Firebase Firestore
-
-### Caching
-- Implement Redis for session storage
-- Add CDN for static assets
-
-### Load Balancing
-- Use multiple backend instances
-- Implement health checks
-
-## 🔄 CI/CD Pipeline
-
-### GitHub Actions Example
-```yaml
-name: Deploy
-on:
-  push:
-    branches: [main]
-
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-      - name: Deploy to Vercel
-        uses: amondnet/vercel-action@v20
-        with:
-          vercel-token: ${{ secrets.VERCEL_TOKEN }}
-          vercel-org-id: ${{ secrets.ORG_ID }}
-          vercel-project-id: ${{ secrets.PROJECT_ID }}
-```
-
-## 📞 Support
-
-If you encounter issues during deployment:
-1. Check the logs in your hosting platform
-2. Verify environment variables
-3. Test locally with production settings
-4. Check the troubleshooting section above
+## 🆘 Troubleshooting
+- Link token errors: confirm all Plaid vars, especially `PLAID_REDIRECT_URI` for OAuth banks
+- After OAuth redirect: ensure the redirect URI returns the SPA (the default SPA rewrite handles this)
+- 404 on /api: check rewrites in `vercel.json` — it should exclude `/api/*`
 
 ---
 
-**Happy Deploying! 🚀** 
+Happy Deploying! 🚀 
