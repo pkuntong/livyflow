@@ -1,10 +1,7 @@
 import { auth } from '../firebase';
 
-// In development, use the Vite proxy to avoid CORS issues
-const isDev = import.meta.env.DEV;
-const API_BASE_URL = isDev ? '/api/v1' : 'https://livyflow.onrender.com/api/v1';
+const API_BASE_URL = '/api/v1';
 console.log("🔧 AlertService initialized with API URL:", API_BASE_URL);
-console.log("🔧 Development mode:", isDev);
 
 export const alertService = {
   async createAlertRule(alertData) {
