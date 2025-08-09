@@ -1,16 +1,7 @@
-import crypto from 'node:crypto';
 import { Configuration, PlaidApi, PlaidEnvironments } from 'plaid';
 
 // In-memory token store (note: ephemeral in serverless)
 export const tokenStore = new Map(); // key: userId, value: { accessToken, itemId, storedAt }
-
-export function getUserIdFromAuthHeader(req) {
-  const auth = req.headers['authorization'] || '';
-  if (!auth.startsWith('Bearer ')) return 'anonymous';
-  const token = auth.slice(7);
-  // Derive a stable non-reversible id from token
-  return crypto.createHash('sha256').update(token).digest('hex').slice(0, 32);
-}
 
 export function getPlaidClient() {
   const clientId = process.env.PLAID_CLIENT_ID;
