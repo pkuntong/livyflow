@@ -43,7 +43,7 @@
     "release:major": "npm version major"
   },
   "dependencies": {
-    "@headlessui/react": "^2.2.4",
+    "@headlessui/react": "^2.2.7",
     "@vercel/kv": "^3.0.0",
     "axios": "^1.10.0",
     "clsx": "^2.1.1",
