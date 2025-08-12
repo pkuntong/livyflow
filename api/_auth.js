@@ -23,6 +23,15 @@ if (!admin.apps.length) {
 }
 
 export async function verifyAuth(req) {
+  // In development, allow bypassing auth with special header
+  const isDev = process.env.NODE_ENV !== 'production';
+  const bypassAuth = isDev && req.headers['x-dev-bypass'] === 'true';
+  
+  if (bypassAuth) {
+    console.log('🔧 Development mode: bypassing Firebase authentication');
+    return 'dev-test-user';
+  }
+
   const authHeader = req.headers['authorization'] || req.headers['Authorization'];
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     const err = new Error('Missing Authorization header');

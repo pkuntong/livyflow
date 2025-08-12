@@ -61,8 +61,17 @@ class PlaidService {
         timeout: 10000 // 10 second timeout
       };
 
-      // Only add auth header if not using test endpoint
-      if (!useTestEndpoint) {
+      // In development, use bypass header if no auth token available
+      if (import.meta.env.DEV) {
+        const token = await this.getAuthToken();
+        if (!token) {
+          console.log("🔧 Development mode: using auth bypass");
+          config.headers['x-dev-bypass'] = 'true';
+        } else {
+          config.headers['Authorization'] = `Bearer ${token}`;
+        }
+      } else {
+        // Production: always require auth
         const token = await this.getAuthToken();
         if (!token) {
           throw new Error('No authentication token found - user must be signed in');
@@ -85,18 +94,32 @@ class PlaidService {
         console.log("Making request to:", `${this.baseURL}/api/plaid/exchange-token`);
       }
       
-      const token = await this.getAuthToken();
-      if (!token) {
-        throw new Error('No authentication token found - user must be signed in');
+      const requestBody = { public_token: publicToken };
+      
+      let headers = {
+        'Content-Type': 'application/json',
+      };
+
+      // In development, use bypass header if no auth token available
+      if (import.meta.env.DEV) {
+        const token = await this.getAuthToken();
+        if (!token) {
+          console.log("🔧 Development mode: using auth bypass");
+          headers['x-dev-bypass'] = 'true';
+        } else {
+          headers['Authorization'] = `Bearer ${token}`;
+        }
+      } else {
+        // Production: always require auth
+        const token = await this.getAuthToken();
+        if (!token) {
+          throw new Error('No authentication token found - user must be signed in');
+        }
+        headers['Authorization'] = `Bearer ${token}`;
       }
 
-      const requestBody = { public_token: publicToken };
-
       const response = await axios.post(`${this.baseURL}/api/plaid/exchange-token`, requestBody, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
+        headers,
         timeout: 10000 // 10 second timeout
       });
 

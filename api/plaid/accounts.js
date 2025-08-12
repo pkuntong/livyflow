@@ -1,6 +1,6 @@
-import { getPlaidClient } from '../_plaidClient';
-import { verifyAuth } from '../_auth';
-import { getToken } from '../_tokenStore';
+import { getPlaidClient } from '../_plaidClient.js';
+import { verifyAuth } from '../_auth.js';
+import { getToken } from '../_tokenStore.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });

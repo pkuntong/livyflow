@@ -9,6 +9,8 @@
   },
   "scripts": {
     "dev": "vite --open",
+    "dev:api": "node dev-server.js",
+    "dev:full": "concurrently \"npm run dev:api\" \"npm run dev\"",
     "build": "vite build",
     "build:production": "vite build --mode production",
     "build:staging": "vite build --mode staging",
@@ -42,9 +44,14 @@
   },
   "dependencies": {
     "@headlessui/react": "^2.2.4",
+    "@vercel/kv": "^3.0.0",
     "axios": "^1.10.0",
     "clsx": "^2.1.1",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.1",
+    "express": "^5.1.0",
     "firebase": "^11.9.1",
+    "firebase-admin": "^13.4.0",
     "lucide-react": "^0.263.1",
     "plaid": "^26.0.0",
     "react": "^18.2.0",
@@ -53,7 +60,8 @@
     "react-router-dom": "^7.6.2",
     "react-toastify": "^11.0.5",
     "recharts": "^2.15.4",
-    "tailwind-merge": "^3.3.1"
+    "tailwind-merge": "^3.3.1",
+    "vercel": "^44.7.3"
   },
   "devDependencies": {
     "@cypress/vite-dev-server": "^6.0.3",
