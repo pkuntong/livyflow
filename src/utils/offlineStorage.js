@@ -1,4 +1,5 @@
 // Offline storage utilities for LivyFlow PWA
+import React from 'react';
 const DB_NAME = 'LivyFlowDB';
 const DB_VERSION = 1;
 

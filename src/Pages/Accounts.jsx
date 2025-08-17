@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, CreditCard, PiggyBank, LineChart, Wallet, RefreshCw, ChevronDown, ChevronUp, Receipt, Calendar, TrendingUp, TrendingDown, DollarSign, Loader2 } from 'lucide-react';
+import { CreditCard, PiggyBank, LineChart, Wallet, RefreshCw, ChevronDown, ChevronUp, Receipt, Calendar } from 'lucide-react';
 import ConnectBankAccount from '../components/ConnectBankAccount';
 import { useAuth } from '../contexts/AuthContext';
 import plaidService from '../services/plaidService';
@@ -255,7 +255,7 @@ function AccountCard({ account }) {
 
 export default function Accounts() {
   const { user } = useAuth();
-  const [accounts, setAccounts] = useState([]);
+  // const [accounts, setAccounts] = useState([]);
   const [plaidAccounts, setPlaidAccounts] = useState([]);
   const [showPlaidConnect, setShowPlaidConnect] = useState(false);
   const [linkToken, setLinkToken] = useState(null);

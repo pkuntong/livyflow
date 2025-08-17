@@ -131,7 +131,7 @@ export default function MonthlySpendingChart() {
     }).format(value);
   };
 
-  const CustomTooltip = ({ active, payload, label }) => {
+  const CustomTooltip = ({ active, payload }) => {
     if (active && payload && payload.length) {
       const data = payload[0].payload;
       return (

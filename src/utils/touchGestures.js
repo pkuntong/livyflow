@@ -1,4 +1,5 @@
 // Touch gesture utilities for mobile optimization
+import React from 'react';
 export class TouchGestureHandler {
   constructor(element, options = {}) {
     this.element = element;

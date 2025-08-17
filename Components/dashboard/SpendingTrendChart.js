@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts';
-import { RefreshCw, TrendingUp } from 'lucide-react';
+import { RefreshCw } from 'lucide-react';
 import { useAuth } from '../../src/contexts/AuthContext';
 import plaidService from '../../src/services/plaidService';
 
@@ -17,9 +17,9 @@ export default function SpendingTrendChart() {
     if (user) {
       fetchSpendingTrend();
     }
-  }, [user, groupBy]);
+  }, [user, groupBy, fetchSpendingTrend]);
 
-  const fetchSpendingTrend = async () => {
+  const fetchSpendingTrend = useCallback(async () => {
     try {
       setIsLoading(true);
       setError(null);
@@ -128,7 +128,7 @@ export default function SpendingTrendChart() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [groupBy]);
 
   // Manual refresh function
   const handleRefresh = async () => {
@@ -158,7 +158,7 @@ export default function SpendingTrendChart() {
     }).format(value);
   };
 
-  const CustomTooltip = ({ active, payload, label }) => {
+  const CustomTooltip = ({ active, payload }) => {
     if (active && payload && payload.length) {
       const data = payload[0].payload;
       return (

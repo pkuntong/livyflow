@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Menu } from '@headlessui/react';
-import { ChevronDown, TrendingUp, TrendingDown, Calculator, Clock, BarChart3, LineChart } from 'lucide-react';
-import { LineChart as RechartsLineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
+import { ChevronDown, BarChart3, LineChart } from 'lucide-react';
+import { ResponsiveContainer } from 'recharts';
 
 const TIME_PERIODS = [
   { label: 'Last 6 Months', value: '6m' },

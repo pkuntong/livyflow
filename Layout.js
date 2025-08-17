@@ -7,7 +7,6 @@ import {
   PiggyBank, 
   TrendingUp,
   Receipt,
-  Settings,
   Menu
 } from "lucide-react";
 import {
@@ -52,7 +51,7 @@ const navigationItems = [
   },
 ];
 
-export default function Layout({ children, currentPageName }) {
+export default function Layout({ children }) {
   const location = useLocation();
 
   return (

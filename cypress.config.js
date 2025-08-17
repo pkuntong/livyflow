@@ -11,7 +11,7 @@ export default defineConfig({
     video: true,
     screenshotOnRunFailure: true,
     chromeWebSecurity: false,
-    setupNodeEvents(on, config) {
+    setupNodeEvents(on) {
       // implement node event listeners here
       on('task', {
         log(message) {
