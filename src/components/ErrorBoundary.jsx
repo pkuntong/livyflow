@@ -94,36 +94,51 @@ class ErrorBoundary extends React.Component {
   }
 
   determineSeverity(error) {
+    if (!error) return 'medium';
+    
     const criticalErrors = ['ChunkLoadError', 'SecurityError', 'OutOfMemoryError'];
     const highErrors = ['TypeError', 'ReferenceError', 'SyntaxError'];
     
-    if (criticalErrors.some(type => error.name.includes(type) || error.message.includes(type))) {
+    const errorName = error.name || '';
+    const errorMessage = error.message || '';
+    
+    if (criticalErrors.some(type => errorName.includes(type) || errorMessage.includes(type))) {
       return 'critical';
     }
-    if (highErrors.includes(error.name)) {
+    if (highErrors.includes(errorName)) {
       return 'high';
     }
     return 'medium';
   }
 
   assessUserImpact(error) {
+    if (!error) return 'ui_degraded';
+    
+    const errorName = error.name || '';
+    const errorMessage = error.message || '';
+    
     // Assess the impact on user experience
-    if (error.message.includes('loading chunk')) {
+    if (errorMessage.includes('loading chunk')) {
       return 'navigation_blocked';
     }
-    if (error.message.includes('network') || error.message.includes('fetch')) {
+    if (errorMessage.includes('network') || errorMessage.includes('fetch')) {
       return 'data_unavailable';
     }
-    if (error.name === 'TypeError' && error.message.includes('undefined')) {
+    if (errorName === 'TypeError' && errorMessage.includes('undefined')) {
       return 'feature_broken';
     }
     return 'ui_degraded';
   }
 
   isRecoverable(error) {
+    if (!error) return false;
+    
     const recoverableErrors = ['ChunkLoadError', 'NetworkError'];
+    const errorName = error.name || '';
+    const errorMessage = error.message || '';
+    
     return recoverableErrors.some(type => 
-      error.name.includes(type) || error.message.includes(type)
+      errorName.includes(type) || errorMessage.includes(type)
     );
   }
 

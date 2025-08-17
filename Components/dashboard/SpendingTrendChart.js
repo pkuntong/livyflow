@@ -13,12 +13,6 @@ export default function SpendingTrendChart() {
   const [groupBy, setGroupBy] = useState('day'); // 'day' or 'week'
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  useEffect(() => {
-    if (user) {
-      fetchSpendingTrend();
-    }
-  }, [user, groupBy, fetchSpendingTrend]);
-
   const fetchSpendingTrend = useCallback(async () => {
     try {
       setIsLoading(true);
@@ -129,6 +123,12 @@ export default function SpendingTrendChart() {
       setIsLoading(false);
     }
   }, [groupBy]);
+
+  useEffect(() => {
+    if (user) {
+      fetchSpendingTrend();
+    }
+  }, [user, groupBy, fetchSpendingTrend]);
 
   // Manual refresh function
   const handleRefresh = async () => {

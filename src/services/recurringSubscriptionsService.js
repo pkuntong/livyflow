@@ -19,13 +19,21 @@ class RecurringSubscriptionsService {
   // Get all recurring subscriptions for the current user
   async getSubscriptions() {
     try {
-      const token = await getAuthToken();
+      const headers = {
+        'Content-Type': 'application/json',
+      };
+      
+      // In development, use bypass header if available
+      if (isDev) {
+        headers['x-dev-bypass'] = 'true';
+      } else {
+        const token = await getAuthToken();
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+      
       const response = await fetch(`${API_BASE_URL}/transactions/recurring`, {
         method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
+        headers,
       });
 
       if (!response.ok) {
