@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { Menu } from '@headlessui/react';
-import { ChevronDown, BarChart3, LineChart } from 'lucide-react';
-import { ResponsiveContainer } from 'recharts';
+import { ChevronDown, BarChart3, LineChart, TrendingUp as TrendingUpIcon } from 'lucide-react';
 
 const TIME_PERIODS = [
   { label: 'Last 6 Months', value: '6m' },
@@ -10,22 +9,6 @@ const TIME_PERIODS = [
   { label: 'This Year', value: '1y' },
 ];
 
-function StatCard({ title, amount, subtitle, trend, icon: Icon, color }) {
-  return (
-    <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100">
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-gray-600">{title}</h3>
-        <div className={`w-8 h-8 ${color} rounded-lg flex items-center justify-center`}>
-          <Icon className="w-5 h-5 text-white" />
-        </div>
-      </div>
-      <div className="space-y-1">
-        <p className="text-2xl font-bold text-gray-900">{amount}</p>
-        <p className="text-sm text-gray-600">{subtitle}</p>
-      </div>
-    </div>
-  );
-}
 
 function TimeSelector({ selectedPeriod, onPeriodChange }) {
   return (
@@ -57,14 +40,6 @@ function TimeSelector({ selectedPeriod, onPeriodChange }) {
 export default function Analytics() {
   const [selectedPeriod, setSelectedPeriod] = useState(TIME_PERIODS[0]);
 
-  const formatCurrency = (amount) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2
-    }).format(amount);
-  };
 
   return (
     <div className="w-full">
@@ -98,7 +73,7 @@ export default function Analytics() {
             <span>Spending Categories</span>
           </div>
           <div className="flex items-center gap-2">
-            <TrendingUp className="w-4 h-4" />
+            <TrendingUpIcon className="w-4 h-4" />
             <span>Financial Trends</span>
           </div>
         </div>
